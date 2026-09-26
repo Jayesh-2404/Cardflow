@@ -1,4 +1,5 @@
 import { forwardRef } from 'react';
+import Icon from './Icon';
 
 interface Props {
   query: string;
@@ -6,39 +7,85 @@ interface Props {
   onNewTask: () => void;
   activeFilterCount: number;
   onOpenFilters: () => void;
+  onOpenPalette?: () => void;
+  doneToday: number;
+  totalOpen: number;
 }
 
 const Header = forwardRef<HTMLInputElement, Props>(function Header(props, searchRef) {
   return (
-    <header className="shrink-0 border-b kb-card kb-border flex flex-wrap items-center gap-2 px-3 py-2 sm:h-14 sm:flex-nowrap sm:gap-3 sm:px-4">
-      <span className="font-semibold tracking-tight order-1">My Board</span>
-      <div className="flex-1 order-2 sm:hidden" />
-      <div className="order-5 basis-full sm:order-2 sm:basis-auto sm:flex-1 sm:max-w-md relative">
-        <input
-          ref={searchRef}
-          value={props.query}
-          onChange={(e) => props.onQuery(e.target.value)}
-          placeholder="Search tasks…  ( / )"
-          className="w-full rounded-lg border kb-border kb-bg px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
-        />
-      </div>
-      <button
-        onClick={props.onOpenFilters}
-        className="order-3 relative px-3 py-1.5 rounded-lg border kb-border text-sm hover:bg-black/5 dark:hover:bg-white/10"
-      >
-        Filters
-        {props.activeFilterCount > 0 && (
-          <span className="ml-1.5 inline-flex items-center justify-center min-w-5 h-5 px-1 rounded-full kb-accent-bg text-white text-xs font-mono-kb">
-            {props.activeFilterCount}
+    <header className="z-20 flex shrink-0 items-center gap-2 border-b kb-border bg-[var(--kb-card)] px-3 py-2 sm:h-13 sm:gap-2.5 sm:px-4">
+      <h1 className="order-1 shrink-0 text-[13px] font-semibold tracking-[-0.01em]">
+        My Board
+      </h1>
+
+      <div className="order-3 w-full sm:order-2 sm:w-auto sm:flex-1 sm:max-w-md">
+        <div className="relative">
+          <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-kb-faint">
+            <Icon name="search" size={14} />
           </span>
+          <input
+            ref={searchRef}
+            value={props.query}
+            onChange={(e) => props.onQuery(e.target.value)}
+            placeholder="Filter cards"
+            aria-label="Filter cards"
+            data-testid="search-input"
+            className="kb-input h-8 pl-8 pr-14"
+          />
+          <kbd className="kb-kbd pointer-events-none absolute right-2 top-1/2 hidden -translate-y-1/2 sm:inline-flex">
+            /
+          </kbd>
+        </div>
+      </div>
+
+      <div className="order-2 ml-auto flex items-center gap-1.5 sm:order-3">
+        <span
+          className="mr-1 hidden font-mono-kb text-[11px] text-kb-muted lg:inline"
+          title="Cards in Done"
+          data-testid="done-counter"
+        >
+          {props.doneToday}/{props.totalOpen}
+        </span>
+        {props.onOpenPalette && (
+          <button
+            onClick={props.onOpenPalette}
+            title="Command palette"
+            data-testid="open-palette"
+            className="kb-btn h-8 px-2"
+          >
+            <Icon name="sparkle" size={14} />
+            <span className="hidden sm:inline">Commands</span>
+            <kbd className="kb-kbd ml-0.5 hidden sm:inline-flex">⌃K</kbd>
+          </button>
         )}
-      </button>
-      <button
-        onClick={props.onNewTask}
-        className="order-4 px-3 py-1.5 rounded-lg kb-accent-bg text-white text-sm font-medium hover:opacity-90"
-      >
-        + New <span className="opacity-70 font-mono-kb text-xs ml-1 hidden sm:inline">N</span>
-      </button>
+        <button
+          onClick={props.onOpenFilters}
+          data-testid="open-filters"
+          className="kb-btn relative h-8 px-2"
+          title="Filters"
+        >
+          <Icon name="filter" size={14} />
+          <span className="hidden sm:inline">Filter</span>
+          {props.activeFilterCount > 0 && (
+            <span className="kb-chip-accent font-mono-kb ml-0.5 h-4 min-w-4 px-1 text-[10px] leading-4">
+              {props.activeFilterCount}
+            </span>
+          )}
+        </button>
+        <button
+          onClick={props.onNewTask}
+          data-testid="new-task"
+          className="kb-btn kb-btn-primary h-8"
+          title="New task (N)"
+        >
+          <Icon name="plus" size={14} strokeWidth={2.25} />
+          New
+          <kbd className="kb-kbd ml-0.5 hidden border-white/25 bg-transparent text-white/70 lg:inline-flex">
+            N
+          </kbd>
+        </button>
+      </div>
     </header>
   );
 });

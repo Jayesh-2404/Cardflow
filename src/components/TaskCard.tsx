@@ -1,31 +1,34 @@
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import Icon from './Icon';
+import { dueMeta } from '../lib/format';
 import type { Task } from '../types';
 
-function isOverdue(dueDate: string | null): boolean {
-  if (!dueDate) return false;
-  const today = new Date().toISOString().slice(0, 10);
-  return dueDate < today;
-}
-
-const DOT: Record<Task['priority'], string> = {
-  low: 'bg-stone-400',
-  medium: 'bg-amber-500',
-  high: 'bg-red-500',
+const PRIO_LABEL: Record<Task['priority'], string> = {
+  low: 'Low',
+  medium: 'Medium',
+  high: 'High',
 };
 
-export default function TaskCard({
-  task,
-  onOpen,
-}: {
+const PRIO_VAR: Record<Task['priority'], string> = {
+  low: 'var(--kb-prio-low)',
+  medium: 'var(--kb-prio-medium)',
+  high: 'var(--kb-prio-high)',
+};
+
+interface Props {
   task: Task;
+  entryCount: number;
   onOpen: (t: Task) => void;
-}) {
+}
+
+export default function TaskCard({ task, entryCount, onOpen }: Props) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: task.id,
   });
 
-  const overdue = isOverdue(task.dueDate);
+  const due = dueMeta(task.dueDate);
+  const tags = task.tags.slice(0, 2);
 
   return (
     <div
@@ -34,32 +37,73 @@ export default function TaskCard({
       {...attributes}
       {...listeners}
       onClick={() => onOpen(task)}
-      className={`kb-card border kb-border rounded-lg p-2.5 cursor-grab active:cursor-grabbing hover:shadow-sm transition-shadow ${
-        isDragging ? 'opacity-60 shadow-md' : ''
+      data-testid="task-card"
+      data-task-id={task.id}
+      className={`group relative cursor-grab overflow-hidden rounded-[7px] border bg-[var(--kb-card)] pl-2.5 pr-2.5 py-2 transition-[border-color,box-shadow,opacity] duration-100 active:cursor-grabbing ${
+        isDragging
+          ? 'border-[var(--kb-accent)] opacity-70'
+          : 'kb-border hover:border-[var(--kb-border-strong)] hover:shadow-[var(--kb-shadow-md)]'
       }`}
     >
-      <div className="flex items-center gap-1.5 mb-1">
-        <span className={`w-2 h-2 rounded-full ${DOT[task.priority]}`} title={task.priority} />
-        {task.tags.slice(0, 3).map((t) => (
-          <span
-            key={t}
-            className="text-[11px] px-1.5 py-px rounded-full bg-black/5 dark:bg-white/10 kb-muted"
-          >
+      {/* priority rail: colour + shape both encode urgency, not colour alone */}
+      <span
+        aria-hidden
+        className="absolute inset-y-0 left-0 w-[3px]"
+        style={{ background: PRIO_VAR[task.priority] }}
+      />
+
+      <div className="flex items-center gap-1.5">
+        <span
+          className="font-mono-kb text-[10px] font-medium uppercase tracking-[0.07em]"
+          style={{ color: PRIO_VAR[task.priority] }}
+          title={`${PRIO_LABEL[task.priority]} priority`}
+        >
+          {PRIO_LABEL[task.priority]}
+        </span>
+        {tags.map((t) => (
+          <span key={t} className="kb-chip kb-sunken border-transparent">
             {t}
           </span>
         ))}
-        {task.tags.length > 3 && (
-          <span className="text-[11px] kb-muted">+{task.tags.length - 3}</span>
+        {task.tags.length > tags.length && (
+          <span className="font-mono-kb text-[10px] kb-faint">+{task.tags.length - tags.length}</span>
         )}
       </div>
-      <p className="text-sm leading-snug clamp-2">{task.title}</p>
-      <div className="flex items-center justify-between mt-1.5">
-        <span
-          className={`text-[11px] font-mono-kb ${overdue ? 'text-red-500 font-medium' : 'kb-muted'}`}
-        >
-          {task.dueDate ?? 'no due'}
-        </span>
-        {task.description && <span className="text-xs kb-muted">≡</span>}
+
+      <p className="mt-1 text-[13.5px] font-medium leading-[1.35] clamp-2">{task.title}</p>
+
+      <div className="mt-1.5 flex items-center gap-2">
+        {due.tone !== 'none' && (
+          <span
+            title={due.title}
+            className="inline-flex items-center gap-1 font-mono-kb text-[10.5px] leading-none"
+            style={{
+              color:
+                due.tone === 'overdue'
+                  ? 'var(--kb-danger)'
+                  : due.tone === 'today'
+                    ? 'var(--kb-warn)'
+                    : 'var(--kb-faint)',
+            }}
+          >
+            <Icon name="calendar" size={11} strokeWidth={2} />
+            {due.label}
+          </span>
+        )}
+        {task.description && (
+          <span title="Has details" className="text-kb-faint">
+            <Icon name="note" size={11} strokeWidth={2} />
+          </span>
+        )}
+        {entryCount > 0 && (
+          <span
+            title={`${entryCount} journal ${entryCount === 1 ? 'entry' : 'entries'}`}
+            className="inline-flex items-center gap-0.5 font-mono-kb text-[10.5px] leading-none text-kb-faint"
+          >
+            <Icon name="clock" size={11} strokeWidth={2} />
+            {entryCount}
+          </span>
+        )}
       </div>
     </div>
   );

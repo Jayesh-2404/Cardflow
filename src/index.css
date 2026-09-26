@@ -2,24 +2,77 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
+/*
+  Tailwind v4 layer order: theme, base, components, utilities.
+  Component classes live in `components` so a utility on the same element
+  (e.g. `pl-8` on `.kb-input`) still wins.
+*/
+@layer base {
+  /*
+    Design tokens.
+    "Sharp" = tighter radii, defined 1px borders, restrained shadows, tabular
+    numerals, and one consistent focus ring instead of ad-hoc ring utilities.
+  */
 :root {
-  --kb-bg: #fafaf9;
+  --kb-bg: #f6f6f5;
   --kb-card: #ffffff;
-  --kb-border: #e7e5e4;
-  --kb-text: #1c1917;
-  --kb-muted: #78716c;
+  --kb-sunken: #f0f0ee;
+  --kb-border: #e2e1dd;
+  --kb-border-strong: #cbc9c3;
+  --kb-text: #191817;
+  --kb-muted: #75736e;
+  --kb-faint: #a3a09a;
   --kb-accent: #4f46e5;
+  --kb-accent-hover: #4338ca;
+  --kb-accent-soft: #eef1ff;
+  --kb-on-accent: #ffffff;
+  --kb-danger: #dc2626;
+  --kb-danger-soft: #fef2f2;
+  --kb-warn: #b45309;
+  --kb-warn-soft: #fffbeb;
+  --kb-ok: #047857;
+  --kb-ok-soft: #ecfdf5;
+  --kb-prio-low: #a8a29e;
+  --kb-prio-medium: #d97706;
+  --kb-prio-high: #dc2626;
+  --kb-shadow-sm: 0 1px 2px rgb(0 0 0 / 0.05);
+  --kb-shadow-md: 0 2px 6px -1px rgb(0 0 0 / 0.09), 0 1px 2px rgb(0 0 0 / 0.05);
+  --kb-shadow-lg: 0 16px 40px -12px rgb(0 0 0 / 0.22), 0 4px 10px -4px rgb(0 0 0 / 0.1);
+  --kb-r-sm: 5px;
+  --kb-r-md: 7px;
+  --kb-r-lg: 10px;
+  --kb-t-fast: 110ms cubic-bezier(0.2, 0, 0.2, 1);
 }
 
 .dark {
-  --kb-bg: #0c0a09;
-  --kb-card: #1c1917;
-  --kb-border: #292524;
-  --kb-text: #e7e5e4;
-  --kb-muted: #a8a29e;
-  --kb-accent: #818cf8;
+  --kb-bg: #0b0b0c;
+  --kb-card: #161618;
+  --kb-sunken: #1e1e21;
+  --kb-border: #2a2a2e;
+  --kb-border-strong: #3d3d43;
+  --kb-text: #ececee;
+  --kb-muted: #9c9a96;
+  --kb-faint: #6e6c68;
+  --kb-accent: #7c74f5;
+  --kb-accent-hover: #918af8;
+  --kb-accent-soft: #1c1b33;
+  --kb-on-accent: #ffffff;
+  --kb-danger: #f87171;
+  --kb-danger-soft: #2a1616;
+  --kb-warn: #fbbf24;
+  --kb-warn-soft: #2a2113;
+  --kb-ok: #34d399;
+  --kb-ok-soft: #10261f;
+  --kb-prio-low: #78716c;
+  --kb-prio-medium: #f59e0b;
+  --kb-prio-high: #ef4444;
+  --kb-shadow-sm: 0 1px 2px rgb(0 0 0 / 0.4);
+  --kb-shadow-md: 0 2px 6px -1px rgb(0 0 0 / 0.5), 0 1px 2px rgb(0 0 0 / 0.4);
+  --kb-shadow-lg: 0 20px 44px -12px rgb(0 0 0 / 0.7), 0 4px 10px -4px rgb(0 0 0 / 0.5);
+  }
 }
 
+@layer base {
 html,
 body,
 #root {
@@ -31,29 +84,210 @@ body {
   color: var(--kb-text);
   font-family: "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
   font-size: 14px;
+  line-height: 1.45;
+  letter-spacing: -0.006em;
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--kb-accent) 26%, transparent);
 }
 
 .font-mono-kb {
   font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
 }
 
+@layer components {
+/* token bridges */
 .kb-bg { background: var(--kb-bg); }
 .kb-card { background: var(--kb-card); }
+.kb-sunken { background: var(--kb-sunken); }
 .kb-border { border-color: var(--kb-border); }
 .kb-text { color: var(--kb-text); }
 .kb-muted { color: var(--kb-muted); }
+.kb-faint { color: var(--kb-faint); }
 .kb-accent { color: var(--kb-accent); }
-.kb-accent-bg { background: var(--kb-accent); }
+.kb-accent-soft { background: var(--kb-accent-soft); }
+.kb-accent-bg { background: var(--kb-accent); color: var(--kb-on-accent); }
+.kb-danger { color: var(--kb-danger); }
+.kb-ok { color: var(--kb-ok); }
 
-/* thin scrollbars for board */
+/*
+  One focus treatment everywhere. `outline` (not box-shadow) keeps edges crisp
+  and stays visible in forced-colors mode.
+*/
+.kb-focus:focus-visible,
+.kb-focus-visible:focus-visible {
+  outline: 2px solid var(--kb-accent);
+  outline-offset: 1px;
+  border-radius: var(--kb-r-sm);
+}
+
+input,
+textarea,
+select,
+button {
+  font: inherit;
+  letter-spacing: inherit;
+}
+
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: 2px solid var(--kb-accent);
+  outline-offset: -1px;
+}
+
+/* controls ------------------------------------------------------------- */
+.kb-input {
+  width: 100%;
+  background: var(--kb-card);
+  color: var(--kb-text);
+  border: 1px solid var(--kb-border);
+  border-radius: var(--kb-r-md);
+  padding: 0.4375rem 0.625rem;
+  font-size: 13.5px;
+  transition: border-color var(--kb-t-fast), background var(--kb-t-fast);
+}
+.kb-input::placeholder { color: var(--kb-faint); }
+.kb-input:hover:not(:focus) { border-color: var(--kb-border-strong); }
+
+.kb-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  border: 1px solid var(--kb-border);
+  background: var(--kb-card);
+  color: var(--kb-text);
+  border-radius: var(--kb-r-md);
+  padding: 0.375rem 0.625rem;
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  transition: background var(--kb-t-fast), border-color var(--kb-t-fast),
+    color var(--kb-t-fast), opacity var(--kb-t-fast);
+}
+.kb-btn:hover { background: var(--kb-sunken); border-color: var(--kb-border-strong); }
+.kb-btn:active { transform: translateY(0.5px); }
+.kb-btn:disabled { opacity: 0.45; pointer-events: none; }
+
+.kb-btn-primary {
+  background: var(--kb-accent);
+  border-color: transparent;
+  color: var(--kb-on-accent);
+  box-shadow: var(--kb-shadow-sm);
+}
+.kb-btn-primary:hover { background: var(--kb-accent-hover); border-color: transparent; }
+
+.kb-btn-ghost { background: transparent; border-color: transparent; }
+.kb-btn-ghost:hover { background: var(--kb-sunken); border-color: transparent; }
+
+.kb-btn-danger { color: var(--kb-danger); border-color: color-mix(in srgb, var(--kb-danger) 35%, transparent); }
+.kb-btn-danger:hover { background: var(--kb-danger-soft); border-color: var(--kb-danger); }
+
+.kb-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  border: 1px solid var(--kb-border);
+  background: var(--kb-card);
+  color: var(--kb-muted);
+  border-radius: 999px;
+  padding: 0.0625rem 0.4375rem;
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+.kb-chip-accent {
+  background: var(--kb-accent);
+  border-color: transparent;
+  color: var(--kb-on-accent);
+}
+
+/* surfaces ------------------------------------------------------------- */
+.kb-panel {
+  background: var(--kb-card);
+  border: 1px solid var(--kb-border);
+  border-radius: var(--kb-r-lg);
+  box-shadow: var(--kb-shadow-sm);
+}
+.kb-panel-inset {
+  background: var(--kb-sunken);
+  border: 1px solid var(--kb-border);
+  border-radius: var(--kb-r-md);
+}
+
+/* scrollbars: thin, neutral, only visible where content scrolls -------- */
+.kb-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--kb-border-strong) transparent;
+  overscroll-behavior: contain;
+}
 .kb-scroll::-webkit-scrollbar { height: 8px; width: 8px; }
-.kb-scroll::-webkit-scrollbar-thumb { background: var(--kb-border); border-radius: 8px; }
+.kb-scroll::-webkit-scrollbar-track { background: transparent; }
+.kb-scroll::-webkit-scrollbar-thumb {
+  background: var(--kb-border-strong);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+.kb-scroll::-webkit-scrollbar-thumb:hover { background-clip: content-box; background-color: var(--kb-faint); }
 
-/* clamp card titles */
-.clamp-2 {
+/* misc ----------------------------------------------------------------- */
+.clamp-1,
+.clamp-2,
+.clamp-3 {
   display: -webkit-box;
-  -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+.clamp-1 { -webkit-line-clamp: 1; }
+.clamp-2 { -webkit-line-clamp: 2; }
+.clamp-3 { -webkit-line-clamp: 3; }
+
+.kb-kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.125rem;
+  height: 1.125rem;
+  padding: 0 0.25rem;
+  border: 1px solid var(--kb-border);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  background: var(--kb-card);
+  color: var(--kb-muted);
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 10px;
+  line-height: 1;
+}
+
+.kb-fade-in { animation: kb-fade-in 130ms cubic-bezier(0.2, 0, 0.2, 1); }
+.kb-pop-in { animation: kb-pop-in 140ms cubic-bezier(0.2, 0, 0.2, 1); }
+
+@keyframes kb-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes kb-pop-in {
+  from { opacity: 0; transform: translateY(4px) scale(0.99); }
+  to { opacity: 1; transform: none; }
+}
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

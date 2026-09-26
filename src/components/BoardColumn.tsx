@@ -1,13 +1,16 @@
 import { useState } from 'react';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { useDroppable } from '@dnd-kit/core';
+import Icon from './Icon';
 import type { Column, Task } from '../types';
 import TaskCard from './TaskCard';
 
 interface Props {
   column: Column;
   tasks: Task[];
+  entryCounts: Record<string, number>;
   wide?: boolean;
+  dimmed?: boolean;
   onOpenTask: (t: Task) => void;
   onQuickAdd: (columnId: string, title: string) => void;
   onRename: (columnId: string, title: string) => void;
@@ -24,23 +27,23 @@ export default function BoardColumn(props: Props) {
 
   function submitQuickAdd() {
     const title = draft.trim();
-    if (!title) {
-      setAdding(false);
-      setDraft('');
-      return;
-    }
-    props.onQuickAdd(column.id, title);
+    if (title) props.onQuickAdd(column.id, title);
     setDraft('');
     setAdding(false);
   }
 
   return (
     <section
-      className={`${props.wide ? 'w-full' : 'w-[80vw] max-w-72 snap-start'} shrink-0 rounded-xl border kb-border kb-bg flex flex-col max-h-full ${
-        isOver ? 'ring-2 ring-indigo-500' : ''
+      aria-label={column.title}
+      data-testid="board-column"
+      data-column-id={column.id}
+      className={`flex max-h-full min-h-0 shrink-0 flex-col overflow-hidden rounded-[10px] border bg-[var(--kb-card)] transition-[border-color,box-shadow] duration-100 ${
+        props.wide ? 'w-full' : 'w-[19rem]'
+      } ${isOver ? 'border-[var(--kb-accent)] shadow-[var(--kb-shadow-md)]' : 'kb-border'} ${
+        props.dimmed ? 'opacity-40' : ''
       }`}
     >
-      <header className="flex items-center gap-2 px-3 py-2.5">
+      <header className="flex shrink-0 items-center gap-1.5 border-b kb-border px-2.5 py-2">
         {renaming ? (
           <input
             autoFocus
@@ -48,59 +51,78 @@ export default function BoardColumn(props: Props) {
             onChange={(e) => setRenameDraft(e.target.value)}
             onBlur={() => {
               const t = renameDraft.trim();
-              if (t) props.onRename(column.id, t);
+              if (t && t !== column.title) props.onRename(column.id, t);
               else setRenameDraft(column.title);
               setRenaming(false);
             }}
             onKeyDown={(e) => {
-              if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+              if (e.key === 'Enter') e.currentTarget.blur();
               if (e.key === 'Escape') {
                 setRenameDraft(column.title);
                 setRenaming(false);
               }
             }}
-            className="flex-1 min-w-0 rounded-md border kb-border kb-card px-2 py-1 text-sm font-medium outline-none"
+            className="kb-input h-7 flex-1 min-w-0 font-medium"
           />
         ) : (
           <h2
-            className="flex-1 min-w-0 truncate text-sm font-semibold uppercase tracking-wide cursor-text"
+            className="flex min-w-0 flex-1 cursor-text items-baseline gap-1.5 truncate text-[11px] font-semibold uppercase tracking-[0.08em] text-kb-muted"
             onDoubleClick={() => setRenaming(true)}
             title="Double-click to rename"
           >
-            {column.title}{' '}
-            <span className="kb-muted font-mono-kb font-normal ml-1">{tasks.length}</span>
+            <span className="truncate">{column.title}</span>
+            <span className="font-mono-kb text-[10.5px] font-normal text-kb-faint">
+              {tasks.length}
+            </span>
           </h2>
         )}
         <button
-          title="Rename column"
+          title="Rename list"
+          aria-label={`Rename ${column.title}`}
           onClick={() => setRenaming(true)}
-          className="kb-muted hover:kb-text text-sm px-1"
+          className="grid h-6 w-6 place-items-center rounded-[5px] text-kb-faint transition-colors duration-100 hover:bg-[var(--kb-sunken)] hover:text-kb-text"
         >
-          ✎
+          <Icon name="pencil" size={13} />
         </button>
         <button
-          title="Delete column (tasks move to first column)"
+          title="Delete list (cards move to the first list)"
+          aria-label={`Delete ${column.title}`}
           onClick={() => props.onDelete(column.id)}
-          className="kb-muted hover:text-red-500 text-sm px-1"
+          className="grid h-6 w-6 place-items-center rounded-[5px] text-kb-faint transition-colors duration-100 hover:bg-[var(--kb-danger-soft)] hover:text-kb-danger"
         >
-          🗑
+          <Icon name="trash" size={13} />
         </button>
       </header>
 
-      <div ref={setNodeRef} className="flex-1 overflow-y-auto kb-scroll px-2 pb-2 space-y-2 min-h-10">
+      <div
+        ref={setNodeRef}
+        className="kb-scroll min-h-10 flex-1 space-y-1.5 overflow-y-auto p-1.5"
+      >
         <SortableContext items={tasks.map((t) => t.id)} strategy={verticalListSortingStrategy}>
           {tasks.map((t) => (
-            <TaskCard key={t.id} task={t} onOpen={props.onOpenTask} />
+            <TaskCard
+              key={t.id}
+              task={t}
+              entryCount={props.entryCounts[t.id] ?? 0}
+              onOpen={props.onOpenTask}
+            />
           ))}
         </SortableContext>
         {tasks.length === 0 && (
-          <p className="text-xs kb-muted text-center py-4">Drop tasks here</p>
+          <div className="flex flex-col items-center gap-1.5 px-3 py-7 text-center">
+            <span className="text-kb-faint">
+              <Icon name="inbox" size={18} strokeWidth={1.5} />
+            </span>
+            <p className="text-[11.5px] leading-snug text-kb-faint">
+              Empty — drop a card here
+            </p>
+          </div>
         )}
       </div>
 
-      <footer className="p-2">
+      <footer className="shrink-0 border-t kb-border p-1.5">
         {adding ? (
-          <div className="kb-card border kb-border rounded-lg p-2">
+          <div className="kb-panel-inset p-1.5">
             <input
               autoFocus
               value={draft}
@@ -112,13 +134,16 @@ export default function BoardColumn(props: Props) {
                   setDraft('');
                 }
               }}
-              placeholder="Task title + Enter"
-              className="w-full text-sm outline-none bg-transparent"
+              placeholder="Card title, then Enter"
+              aria-label="New card title"
+              data-testid="quick-add-input"
+              className="w-full bg-transparent text-[13px] outline-none placeholder:text-kb-faint"
             />
-            <div className="flex gap-1.5 mt-2">
+            <div className="mt-1.5 flex items-center gap-1.5">
               <button
                 onClick={submitQuickAdd}
-                className="px-2.5 py-1 rounded-md kb-accent-bg text-white text-xs font-medium"
+                data-testid="quick-add-submit"
+                className="kb-btn kb-btn-primary h-6 px-2 text-[11.5px]"
               >
                 Add
               </button>
@@ -127,18 +152,21 @@ export default function BoardColumn(props: Props) {
                   setAdding(false);
                   setDraft('');
                 }}
-                className="px-2.5 py-1 rounded-md text-xs kb-muted hover:kb-text"
+                className="kb-btn kb-btn-ghost h-6 px-2 text-[11.5px]"
               >
                 Cancel
               </button>
+              <kbd className="kb-kbd ml-auto">↵</kbd>
             </div>
           </div>
         ) : (
           <button
             onClick={() => setAdding(true)}
-            className="w-full text-left px-2 py-1.5 rounded-lg text-sm kb-muted hover:kb-text hover:bg-black/5 dark:hover:bg-white/10"
+            data-testid="quick-add"
+            className="flex w-full items-center gap-1.5 rounded-[6px] px-1.5 py-1 text-left text-[12.5px] text-kb-muted transition-colors duration-100 hover:bg-[var(--kb-sunken)] hover:text-kb-text"
           >
-            + Add card
+            <Icon name="plus" size={14} />
+            Add card
           </button>
         )}
       </footer>

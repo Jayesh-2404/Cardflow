@@ -8,11 +8,12 @@ import {
   type DragEndEvent,
 } from '@dnd-kit/core';
 import Header from './components/Header';
-import Sidebar from './components/Sidebar';
+import Sidebar, { type PanelName } from './components/Sidebar';
 import BoardColumn from './components/BoardColumn';
 import TaskEditor, { type EditorDraft } from './components/TaskEditor';
 import Login from './components/Login';
-import { ApiError, api, fromServer } from './lib/api';
+import Icon from './components/Icon';
+import { ApiError, api, API_BASE, fromServer } from './lib/api';
 import { DEFAULT_FILTERS, type BoardState, type FilterState, type Task } from './types';
 import '@fontsource/inter/400.css';
 import '@fontsource/inter/500.css';
@@ -64,7 +65,7 @@ export default function App() {
   const [board, setBoard] = useState<BoardState | null>(null);
   const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTERS);
   const [railOpen, setRailOpen] = useState(false);
-  const [panel, setPanel] = useState<'filters' | 'archive' | 'settings' | null>(null);
+  const [panel, setPanel] = useState<PanelName | null>(null);
   const [editing, setEditing] = useState<Task | null>(null);
   const [creating, setCreating] = useState(false);
   const [createColumnId, setCreateColumnId] = useState('');
@@ -102,7 +103,7 @@ export default function App() {
         if (err instanceof ApiError && err.status === 401) {
           setUser(null);
         } else {
-          setBootError('Cannot reach the API. Start it with `npm run dev` in server/.');
+          setBootError(`Cannot reach the API at ${API_BASE}. Check VITE_API_URL + backend CORS.`);
         }
       } finally {
         if (!cancelled) setBooting(false);
@@ -140,6 +141,19 @@ export default function App() {
   }, [board]);
 
   const archived = useMemo(() => board?.tasks.filter((t) => t.archived) ?? [], [board]);
+
+  /** Journal entries per task, filled in once the timeline API is wired up. */
+  const entryCounts = useMemo<Record<string, number>>(() => ({}), []);
+
+  const openTasks = useMemo(() => board?.tasks.filter((t) => !t.archived) ?? [], [board]);
+  const doneCount = useMemo(() => {
+    const doneIds = new Set(
+      (board?.columns ?? [])
+        .filter((c) => /done|complete|finished|shipped/i.test(c.title))
+        .map((c) => c.id),
+    );
+    return openTasks.filter((t) => doneIds.has(t.columnId)).length;
+  }, [board, openTasks]);
 
   const activeFilterCount =
     filters.priorities.length +
@@ -302,22 +316,29 @@ export default function App() {
 
   if (booting) {
     return (
-      <div className="h-full flex items-center justify-center kb-bg kb-text">
-        <p className="kb-muted text-sm">Loading…</p>
+      <div className="kb-bg flex h-full items-center justify-center">
+        <span className="flex items-center gap-2 text-[12.5px] text-kb-muted">
+          <Icon name="columns" size={15} className="kb-accent" />
+          Loading board…
+        </span>
       </div>
     );
   }
 
   if (bootError) {
     return (
-      <div className="h-full flex items-center justify-center kb-bg kb-text px-4">
-        <div className="max-w-sm text-center">
-          <p className="font-semibold">API unreachable</p>
-          <p className="text-sm kb-muted mt-1 font-mono-kb">{bootError}</p>
+      <div className="kb-bg flex h-full items-center justify-center px-4">
+        <div className="kb-panel max-w-sm p-5 text-center">
+          <span className="mx-auto mb-2 grid h-8 w-8 place-items-center rounded-[8px] text-kb-danger" style={{ background: 'var(--kb-danger-soft)' }}>
+            <Icon name="alert" size={17} />
+          </span>
+          <p className="text-[14px] font-semibold">API unreachable</p>
+          <p className="mt-1.5 font-mono-kb text-[11.5px] leading-relaxed text-kb-muted">{bootError}</p>
           <button
             onClick={() => window.location.reload()}
-            className="mt-4 px-4 py-2 rounded-lg kb-accent-bg text-white text-sm"
+            className="kb-btn kb-btn-primary mt-4 h-8 w-full"
           >
+            <Icon name="undo" size={14} />
             Retry
           </button>
         </div>
@@ -364,7 +385,7 @@ export default function App() {
   const activeColObj = board.columns.find((c) => c.id === activeMobileCol);
 
   return (
-    <div className="h-full flex kb-bg kb-text">
+    <div className="kb-bg flex h-full overflow-hidden text-kb-text">
       <Sidebar
         railOpen={railOpen}
         panel={panel}
@@ -419,26 +440,31 @@ export default function App() {
             void commit(api.clearBoard());
           }
         }}
+        journalList={
+          <p className="text-[12.5px] text-kb-faint">Nothing journalled yet.</p>
+        }
         archiveList={
           archived.length === 0 ? (
-            <p className="text-sm kb-muted">Nothing archived.</p>
+            <p className="text-[12.5px] text-kb-faint">Nothing archived.</p>
           ) : (
             archived.map((t) => (
-              <div key={t.id} className="border kb-border rounded-lg p-2.5 text-sm">
-                <p className="clamp-2">{t.title}</p>
-                <div className="flex gap-1.5 mt-2">
+              <div key={t.id} className="kb-panel p-2.5">
+                <p className="clamp-2 text-[12.5px] font-medium">{t.title}</p>
+                <div className="mt-2 flex gap-1.5">
                   <button
                     onClick={() => void commit(api.updateTask(t.id, { archived: false }))}
-                    className="text-xs px-2 py-1 rounded-md border kb-border hover:bg-black/5 dark:hover:bg-white/10"
+                    className="kb-btn h-6 px-2 text-[11.5px]"
                   >
+                    <Icon name="undo" size={12} />
                     Restore
                   </button>
                   <button
                     onClick={() => {
                       if (window.confirm('Delete permanently?')) void commit(api.deleteTask(t.id));
                     }}
-                    className="text-xs px-2 py-1 rounded-md border border-red-300 text-red-500"
+                    className="kb-btn kb-btn-danger h-6 px-2 text-[11.5px]"
                   >
+                    <Icon name="trash" size={12} />
                     Delete
                   </button>
                 </div>
@@ -448,86 +474,93 @@ export default function App() {
         }
       />
 
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex min-w-0 flex-1 flex-col">
         <Header
           ref={searchRef}
           query={filters.query}
           onQuery={(q) => setFilters({ ...filters, query: q })}
           onNewTask={() => openCreate(board.columns[0]?.id ?? '')}
           activeFilterCount={activeFilterCount}
+          doneToday={doneCount}
+          totalOpen={openTasks.length}
           onOpenFilters={() => {
             setPanel('filters');
             setRailOpen(true);
           }}
         />
 
-        <main className="flex-1 min-h-0 flex flex-col">
+        <main className="flex min-h-0 flex-1 flex-col">
           <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
             {!isDesktop ? (
-              /* mobile: one full-width column at a time with tabs */
-              <div className="flex flex-col min-h-0 flex-1">
-              <div className="flex gap-1.5 px-3 py-2 overflow-x-auto kb-scroll border-b kb-border kb-card shrink-0">
-                {board.columns.map((col) => {
-                  const n = board.tasks.filter(
-                    (t) => t.columnId === col.id && !t.archived,
-                  ).length;
-                  const active = col.id === activeMobileCol;
-                  return (
-                    <button
-                      key={col.id}
-                      onClick={() => setMobileCol(col.id)}
-                      className={`shrink-0 px-3 py-1.5 rounded-full text-sm border ${
-                        active
-                          ? 'kb-accent-bg text-white border-transparent font-medium'
-                          : 'kb-border kb-muted'
-                      }`}
-                    >
-                      {col.title}{' '}
-                      <span className="font-mono-kb text-xs ml-0.5">{n}</span>
-                    </button>
-                  );
-                })}
-                <button
-                  onClick={addList}
-                  className="shrink-0 px-3 py-1.5 rounded-full text-sm border border-dashed kb-border kb-muted"
-                >
-                  + List
-                </button>
+              /* mobile: one full-width list at a time, switched by tabs */
+              <div className="flex min-h-0 flex-1 flex-col">
+                <div className="kb-scroll flex shrink-0 gap-1.5 overflow-x-auto border-b kb-border bg-[var(--kb-card)] px-2.5 py-2">
+                  {board.columns.map((col) => {
+                    const n = board.tasks.filter(
+                      (t) => t.columnId === col.id && !t.archived,
+                    ).length;
+                    const active = col.id === activeMobileCol;
+                    return (
+                      <button
+                        key={col.id}
+                        onClick={() => setMobileCol(col.id)}
+                        data-testid="mobile-tab"
+                        className={`shrink-0 rounded-full border px-2.5 py-1 text-[12.5px] transition-colors duration-100 ${
+                          active
+                            ? 'kb-accent-bg border-transparent font-medium'
+                            : 'kb-border text-kb-muted'
+                        }`}
+                      >
+                        {col.title}
+                        <span className="font-mono-kb ml-1 text-[10.5px] opacity-70">{n}</span>
+                      </button>
+                    );
+                  })}
+                  <button
+                    onClick={addList}
+                    className="shrink-0 rounded-full border border-dashed kb-border px-2.5 py-1 text-[12.5px] text-kb-muted"
+                  >
+                    + List
+                  </button>
+                </div>
+                <div className="kb-scroll min-h-0 flex-1 overflow-y-auto p-2.5">
+                  {activeColObj && (
+                    <BoardColumn
+                      wide
+                      column={activeColObj}
+                      tasks={visibleTasks(activeColObj.id)}
+                      entryCounts={entryCounts}
+                      onOpenTask={setEditing}
+                      onQuickAdd={quickAdd}
+                      onRename={renameCol}
+                      onDelete={deleteCol}
+                    />
+                  )}
+                </div>
               </div>
-              <div className="flex-1 overflow-y-auto kb-scroll p-3 min-h-0">
-                {activeColObj && (
+            ) : (
+              /* desktop: full-height lists, horizontal scroll */
+              <div className="kb-scroll flex min-h-0 flex-1 items-stretch gap-2.5 overflow-x-auto p-2.5">
+                {board.columns.map((col) => (
                   <BoardColumn
-                    wide
-                    column={activeColObj}
-                    tasks={visibleTasks(activeColObj.id)}
+                    key={col.id}
+                    column={col}
+                    tasks={visibleTasks(col.id)}
+                    entryCounts={entryCounts}
                     onOpenTask={setEditing}
                     onQuickAdd={quickAdd}
                     onRename={renameCol}
                     onDelete={deleteCol}
                   />
-                )}
-              </div>
-            </div>
-            ) : (
-              /* desktop: horizontal board */
-              <div className="flex flex-1 min-h-0 gap-3 p-4 items-start overflow-x-auto kb-scroll">
-              {board.columns.map((col) => (
-                <BoardColumn
-                  key={col.id}
-                  column={col}
-                  tasks={visibleTasks(col.id)}
-                  onOpenTask={setEditing}
-                  onQuickAdd={quickAdd}
-                  onRename={renameCol}
-                  onDelete={deleteCol}
-                />
-              ))}
-              <button
-                onClick={addList}
-                className="w-72 shrink-0 rounded-xl border border-dashed kb-border px-3 py-3 text-sm kb-muted hover:kb-text hover:bg-black/5 dark:hover:bg-white/5"
-              >
-                + Add list
-              </button>
+                ))}
+                <button
+                  onClick={addList}
+                  data-testid="add-list"
+                  className="flex h-[5.5rem] w-[10rem] shrink-0 flex-col items-center justify-center gap-1.5 self-start rounded-[10px] border border-dashed kb-border text-[12.5px] text-kb-muted transition-colors duration-100 hover:border-[var(--kb-border-strong)] hover:bg-[var(--kb-card)] hover:text-kb-text"
+                >
+                  <Icon name="plus" size={16} />
+                  Add list
+                </button>
               </div>
             )}
           </DndContext>

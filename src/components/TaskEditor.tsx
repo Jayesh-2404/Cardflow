@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import Icon from './Icon';
 import type { Column, Priority, Task } from '../types';
 
 export interface EditorDraft {
@@ -52,16 +53,37 @@ export default function TaskEditor(props: Props) {
 
   return (
     <div className="fixed inset-0 z-40">
-      <div className="absolute inset-0 bg-black/25" onClick={props.onClose} />
-      <aside className="absolute right-0 top-0 bottom-0 w-full max-w-md kb-card border-l kb-border p-5 overflow-y-auto shadow-xl">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="font-semibold">{props.task ? 'Edit task' : 'New task'}</h2>
-          <button onClick={props.onClose} className="kb-muted hover:kb-text text-lg">
-            ✕
+      <div
+        className="absolute inset-0 bg-black/30"
+        onClick={props.onClose}
+        data-testid="editor-scrim"
+      />
+      <aside
+        role="dialog"
+        aria-modal="true"
+        aria-label={props.task ? 'Edit task' : 'New task'}
+        data-testid="task-editor"
+        className="kb-pop-in absolute right-0 top-0 flex h-full w-full max-w-[30rem] flex-col border-l kb-border bg-[var(--kb-card)] shadow-[var(--kb-shadow-lg)]"
+      >
+        <div className="flex shrink-0 items-center justify-between border-b kb-border px-4 py-2.5">
+          <h2 className="text-[11px] font-semibold uppercase tracking-[0.08em] text-kb-muted">
+            {props.task ? 'Edit task' : 'New task'}
+          </h2>
+          <button
+            onClick={props.onClose}
+            aria-label="Close editor"
+            data-testid="editor-close"
+            className="grid h-6 w-6 place-items-center rounded-[5px] text-kb-muted transition-colors duration-100 hover:bg-[var(--kb-sunken)] hover:text-kb-text"
+          >
+            <Icon name="close" size={14} />
           </button>
         </div>
 
-        <label className="block text-xs kb-muted uppercase tracking-wide mb-1">Title</label>
+        <div className="kb-scroll min-h-0 flex-1 overflow-y-auto p-4">
+
+        <label className="mb-1 block text-[10.5px] font-semibold uppercase tracking-[0.08em] text-kb-faint">
+          Title
+        </label>
         <input
           autoFocus
           value={draft.title}
@@ -70,25 +92,35 @@ export default function TaskEditor(props: Props) {
             if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') save();
           }}
           placeholder="What needs doing?"
-          className="w-full rounded-lg border kb-border kb-bg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+          aria-label="Title"
+          data-testid="editor-title"
+          className="kb-input"
         />
 
-        <label className="block text-xs kb-muted uppercase tracking-wide mt-4 mb-1">Details</label>
+        <label className="mb-1 mt-3.5 block text-[10.5px] font-semibold uppercase tracking-[0.08em] text-kb-faint">
+          Details
+        </label>
         <textarea
           value={draft.description}
           onChange={(e) => setDraft({ ...draft, description: e.target.value })}
           rows={4}
           placeholder="Notes, links, context…"
-          className="w-full rounded-lg border kb-border kb-bg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+          aria-label="Details"
+          data-testid="editor-details"
+          className="kb-input resize-y leading-relaxed"
         />
 
-        <div className="grid grid-cols-2 gap-3 mt-4">
+        <div className="mt-3.5 grid grid-cols-2 gap-2.5">
           <div>
-            <label className="block text-xs kb-muted uppercase tracking-wide mb-1">Priority</label>
+            <label className="mb-1 block text-[10.5px] font-semibold uppercase tracking-[0.08em] text-kb-faint">
+              Priority
+            </label>
             <select
               value={draft.priority}
               onChange={(e) => setDraft({ ...draft, priority: e.target.value as Priority })}
-              className="w-full rounded-lg border kb-border kb-bg px-2.5 py-2 text-sm outline-none"
+              aria-label="Priority"
+              data-testid="editor-priority"
+              className="kb-input h-[34px]"
             >
               <option value="low">Low</option>
               <option value="medium">Medium</option>
@@ -96,31 +128,48 @@ export default function TaskEditor(props: Props) {
             </select>
           </div>
           <div>
-            <label className="block text-xs kb-muted uppercase tracking-wide mb-1">Due date</label>
+            <label className="mb-1 block text-[10.5px] font-semibold uppercase tracking-[0.08em] text-kb-faint">
+              Due date
+            </label>
             <input
               type="date"
               value={draft.dueDate}
               onChange={(e) => setDraft({ ...draft, dueDate: e.target.value })}
-              className="w-full rounded-lg border kb-border kb-bg px-2.5 py-1.5 text-sm outline-none font-mono-kb"
+              aria-label="Due date"
+              data-testid="editor-due"
+              className="kb-input font-mono-kb"
             />
           </div>
         </div>
 
-        <label className="block text-xs kb-muted uppercase tracking-wide mt-4 mb-1">
-          Tags (comma separated)
+        <label className="mb-1 mt-3.5 block text-[10.5px] font-semibold uppercase tracking-[0.08em] text-kb-faint">
+          Tags
         </label>
         <input
           value={draft.tags}
           onChange={(e) => setDraft({ ...draft, tags: e.target.value })}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              save();
+            }
+          }}
           placeholder="home, urgent"
-          className="w-full rounded-lg border kb-border kb-bg px-3 py-2 text-sm outline-none"
+          aria-label="Tags"
+          data-testid="editor-tags"
+          className="kb-input"
         />
+        <p className="mt-1 text-[11px] text-kb-faint">Comma separated, up to 8.</p>
 
-        <label className="block text-xs kb-muted uppercase tracking-wide mt-4 mb-1">Column</label>
+        <label className="mb-1 mt-3.5 block text-[10.5px] font-semibold uppercase tracking-[0.08em] text-kb-faint">
+          List
+        </label>
         <select
           value={draft.columnId}
           onChange={(e) => setDraft({ ...draft, columnId: e.target.value })}
-          className="w-full rounded-lg border kb-border kb-bg px-2.5 py-2 text-sm outline-none"
+          aria-label="List"
+          data-testid="editor-column"
+          className="kb-input h-[34px]"
         >
           {props.columns.map((c) => (
             <option key={c.id} value={c.id}>
@@ -129,38 +178,42 @@ export default function TaskEditor(props: Props) {
           ))}
         </select>
 
-        <div className="flex gap-2 mt-6">
+        <div className="mt-5 flex gap-2">
           <button
             onClick={save}
             disabled={!draft.title.trim()}
-            className="flex-1 rounded-lg kb-accent-bg text-white py-2 text-sm font-medium disabled:opacity-40"
+            data-testid="editor-save"
+            className="kb-btn kb-btn-primary h-8 flex-1"
           >
-            Save <span className="opacity-70 text-xs font-mono-kb">⌃↵</span>
+            Save
+            <kbd className="kb-kbd ml-0.5 border-white/25 bg-transparent text-white/70">⌃↵</kbd>
           </button>
-          <button
-            onClick={props.onClose}
-            className="px-4 rounded-lg border kb-border text-sm hover:bg-black/5 dark:hover:bg-white/10"
-          >
+          <button onClick={props.onClose} data-testid="editor-cancel" className="kb-btn h-8">
             Cancel
           </button>
         </div>
 
         {props.task && (
-          <div className="flex gap-2 mt-3">
+          <div className="mt-2 flex gap-2">
             <button
               onClick={() => props.onArchive(props.task!.id, !props.task!.archived)}
-              className="flex-1 rounded-lg border kb-border py-1.5 text-sm hover:bg-black/5 dark:hover:bg-white/10"
+              data-testid="editor-archive"
+              className="kb-btn h-8 flex-1"
             >
+              <Icon name="archive" size={14} />
               {props.task.archived ? 'Unarchive' : 'Archive'}
             </button>
             <button
               onClick={() => props.onDelete(props.task!.id)}
-              className="flex-1 rounded-lg border border-red-300 text-red-500 py-1.5 text-sm hover:bg-red-50 dark:hover:bg-red-950"
+              data-testid="editor-delete"
+              className="kb-btn kb-btn-danger h-8 flex-1"
             >
+              <Icon name="trash" size={14} />
               Delete
             </button>
           </div>
         )}
+        </div>
       </aside>
     </div>
   );
