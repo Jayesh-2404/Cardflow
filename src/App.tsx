@@ -12,6 +12,7 @@ import Sidebar, { type PanelName } from './components/Sidebar';
 import BoardColumn from './components/BoardColumn';
 import TaskEditor, { type EditorDraft } from './components/TaskEditor';
 import JournalPanel from './components/JournalPanel';
+import CommandPalette from './components/CommandPalette';
 import Login from './components/Login';
 import Icon from './components/Icon';
 import { ApiError, api, API_BASE, fromServer, type JournalEvent } from './lib/api';
@@ -75,6 +76,7 @@ export default function App() {
     { counts: {}, events: [] },
   );
   const [notesBusy, setNotesBusy] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
   const isDesktop = useIsDesktop();
 
@@ -125,23 +127,59 @@ export default function App() {
     function onKey(e: KeyboardEvent) {
       const tag = (e.target as HTMLElement)?.tagName;
       const typing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+      const k = e.key.toLowerCase();
+
+      if ((e.ctrlKey || e.metaKey) && k === 'k') {
+        e.preventDefault();
+        setPaletteOpen(true);
+        return;
+      }
+
+      // Escape peels one layer at a time: palette, then editor, then panel.
+      if (e.key === 'Escape') {
+        if (paletteOpen) {
+          setPaletteOpen(false);
+        } else if (editing || creating) {
+          setEditing(null);
+          setCreating(false);
+        } else if (panel) {
+          setPanel(null);
+          setRailOpen(false);
+        } else if (filters.query) {
+          setFilters({ ...filters, query: '' });
+        }
+        return;
+      }
+
+      if (typing || !user || !board) return;
+
+      if (e.key === '/') {
         e.preventDefault();
         searchRef.current?.focus();
-      } else if (e.key === '/' && !typing) {
-        e.preventDefault();
-        searchRef.current?.focus();
-      } else if (e.key.toLowerCase() === 'n' && !typing && user && board) {
+      } else if (k === 'n') {
         e.preventDefault();
         openCreate(board.columns[0]?.id ?? '');
-      } else if (e.key.toLowerCase() === 'j' && !typing && user) {
+      } else if (k === 'j') {
         e.preventDefault();
         openPanel('journal');
+      } else if (k === 'f') {
+        e.preventDefault();
+        openPanel('filters');
+      } else if (e.key === '?') {
+        e.preventDefault();
+        setPaletteOpen(true);
+      } else if (/^[1-9]$/.test(e.key)) {
+        // jump to the nth list; on mobile this also switches the visible tab
+        const col = board.columns[Number(e.key) - 1];
+        if (col) {
+          e.preventDefault();
+          jumpToColumn(col.id);
+        }
       }
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [user, board]);
+  }, [user, board, paletteOpen, editing, creating, panel, filters]);
 
   const allTags = useMemo(() => {
     const s = new Set<string>();
@@ -245,6 +283,14 @@ export default function App() {
     setPanel(p);
     setRailOpen(true);
     if (p === 'journal') void refreshJournal();
+  }
+
+  /** Bring a list into view: switch the mobile tab, scroll it on desktop. */
+  function jumpToColumn(columnId: string) {
+    setMobileCol(columnId);
+    document
+      .querySelector(`[data-column-id="${columnId}"]`)
+      ?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
   }
 
   function parseTags(input: string): string[] {
@@ -544,6 +590,7 @@ export default function App() {
           activeFilterCount={activeFilterCount}
           doneToday={doneCount}
           totalOpen={openTasks.length}
+          onOpenPalette={() => setPaletteOpen(true)}
           onOpenFilters={() => {
             setPanel('filters');
             setRailOpen(true);
@@ -651,6 +698,24 @@ export default function App() {
           onAddNote={handleAddNote}
         />
       )}
+
+      <CommandPalette
+        open={paletteOpen}
+        columns={board.columns}
+        tasks={board.tasks}
+        archivedCount={archived.length}
+        onClose={() => setPaletteOpen(false)}
+        onNewTask={openCreate}
+        onOpenTask={(t) => {
+          setCreating(false);
+          setEditing(t);
+        }}
+        onAddList={addList}
+        onOpenPanel={openPanel}
+        onToggleTheme={() => setTheme((t) => (t === 'light' ? 'dark' : 'light'))}
+        onExport={exportJson}
+        onJumpToColumn={jumpToColumn}
+      />
     </div>
   );
 }

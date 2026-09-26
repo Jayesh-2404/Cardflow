@@ -14,11 +14,12 @@ interface Props {
 
 const Header = forwardRef<HTMLInputElement, Props>(function Header(props, searchRef) {
   return (
-    <header className="z-20 flex shrink-0 items-center gap-2 border-b kb-border bg-[var(--kb-card)] px-3 py-2 sm:h-13 sm:gap-2.5 sm:px-4">
+    <header className="z-20 flex shrink-0 flex-wrap items-center gap-2 border-b kb-border bg-[var(--kb-card)] px-3 py-2 sm:h-13 sm:flex-nowrap sm:gap-2.5 sm:px-4">
       <h1 className="order-1 shrink-0 text-[13px] font-semibold tracking-[-0.01em]">
         My Board
       </h1>
 
+      {/* search drops to its own row below sm so it never gets crushed */}
       <div className="order-3 w-full sm:order-2 sm:w-auto sm:flex-1 sm:max-w-md">
         <div className="relative">
           <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-kb-faint">
@@ -39,7 +40,7 @@ const Header = forwardRef<HTMLInputElement, Props>(function Header(props, search
         </div>
       </div>
 
-      <div className="order-2 ml-auto flex items-center gap-1.5 sm:order-3">
+      <div className="order-2 ml-auto flex items-center gap-1.5 sm:order-3 sm:ml-0">
         <span
           className="mr-1 hidden font-mono-kb text-[11px] text-kb-muted lg:inline"
           title="Cards in Done"
