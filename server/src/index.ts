@@ -8,6 +8,9 @@ import { boardRouter } from './routes/board';
 
 const app = express();
 
+// Behind Render/Railway/Fly proxies: needed for Secure cross-site cookies + correct proto.
+app.set('trust proxy', 1);
+
 app.use(cors({ origin: env.frontendOrigin, credentials: true }));
 app.use(cookieParser());
 app.use(express.json({ limit: '1mb' }));
