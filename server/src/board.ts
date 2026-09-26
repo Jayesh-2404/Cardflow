@@ -15,6 +15,8 @@ export interface BoardTaskDTO {
   dueDate: string | null;
   tags: string[];
   archived: boolean;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface BoardDTO {
@@ -40,6 +42,8 @@ export async function getBoardState(userId: string): Promise<BoardDTO> {
       dueDate: toDateString(t.dueDate),
       tags: t.tags,
       archived: t.archived,
+      createdAt: t.createdAt.toISOString(),
+      updatedAt: t.updatedAt.toISOString(),
     })),
   };
 }

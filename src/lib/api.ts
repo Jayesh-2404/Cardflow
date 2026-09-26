@@ -25,6 +25,8 @@ interface ServerBoard {
     dueDate: string | null;
     tags: string[];
     archived: boolean;
+    createdAt: string;
+    updatedAt: string;
   }[];
 }
 
@@ -59,6 +61,11 @@ export interface JournalEvent {
 
 const PRIORITIES: Priority[] = ['low', 'medium', 'high'];
 
+const toMillis = (iso: string | undefined): number => {
+  const n = iso ? Date.parse(iso) : NaN;
+  return Number.isNaN(n) ? Date.now() : n;
+};
+
 export function fromServer(b: ServerBoard): BoardState {
   return {
     columns: b.columns.map((c) => ({ id: c.id, title: c.title, createdAt: 0 })),
@@ -71,8 +78,8 @@ export function fromServer(b: ServerBoard): BoardState {
       dueDate: t.dueDate,
       tags: t.tags,
       archived: t.archived,
-      createdAt: 0,
-      updatedAt: 0,
+      createdAt: toMillis(t.createdAt),
+      updatedAt: toMillis(t.updatedAt),
     })),
   };
 }

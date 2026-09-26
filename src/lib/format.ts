@@ -44,3 +44,51 @@ export function dueMeta(iso: string | null, now: Date = new Date()): DueMeta {
   if (delta <= 7) return { label: `${delta}d`, tone: 'soon', title: `Due in ${delta} days — ${long}` };
   return { label: `${MONTHS[(m ?? 1) - 1]} ${d}`, tone: 'later', title: `Due ${long}` };
 }
+
+/* ---------------------------------------------------------------- journal */
+
+const MIN_MS = 60_000;
+const HOUR_MS = 3_600_000;
+
+function startOfDay(d: Date): number {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+}
+
+/** Compact age used on every timeline row: `now`, `12m`, `5h`, `3d`, `Sep 14`. */
+export function relTime(iso: string, now: Date = new Date()): string {
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return '';
+  const diff = now.getTime() - then;
+  if (diff < MIN_MS) return 'now';
+  if (diff < HOUR_MS) return `${Math.floor(diff / MIN_MS)}m`;
+  if (diff < DAY_MS) return `${Math.floor(diff / HOUR_MS)}h`;
+  const days = Math.round((startOfDay(now) - startOfDay(new Date(then))) / DAY_MS);
+  if (days === 1) return 'yesterday';
+  if (days < 7) return `${days}d`;
+  const d = new Date(then);
+  return `${MONTHS[d.getMonth()]} ${d.getDate()}`;
+}
+
+/** `Today` / `Yesterday` / `Mon, Sep 22` — the sticky header in the feed. */
+export function dayLabel(iso: string, now: Date = new Date()): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const diff = Math.round((startOfDay(now) - startOfDay(d)) / DAY_MS);
+  if (diff === 0) return 'Today';
+  if (diff === 1) return 'Yesterday';
+  if (diff < 7) {
+    return d.toLocaleDateString(undefined, { weekday: 'long' });
+  }
+  return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+}
+
+/** Full timestamp for the `title` tooltip, e.g. `Fri, Sep 26 · 18:04`. */
+export function absTime(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return `${d.toLocaleDateString(undefined, {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+  })} · ${d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}`;
+}

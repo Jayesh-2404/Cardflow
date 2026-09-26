@@ -11,9 +11,10 @@ import Header from './components/Header';
 import Sidebar, { type PanelName } from './components/Sidebar';
 import BoardColumn from './components/BoardColumn';
 import TaskEditor, { type EditorDraft } from './components/TaskEditor';
+import JournalPanel from './components/JournalPanel';
 import Login from './components/Login';
 import Icon from './components/Icon';
-import { ApiError, api, API_BASE, fromServer } from './lib/api';
+import { ApiError, api, API_BASE, fromServer, type JournalEvent } from './lib/api';
 import { DEFAULT_FILTERS, type BoardState, type FilterState, type Task } from './types';
 import '@fontsource/inter/400.css';
 import '@fontsource/inter/500.css';
@@ -70,6 +71,10 @@ export default function App() {
   const [creating, setCreating] = useState(false);
   const [createColumnId, setCreateColumnId] = useState('');
   const [mobileCol, setMobileCol] = useState('');
+  const [journal, setJournal] = useState<{ counts: Record<string, number>; events: JournalEvent[] }>(
+    { counts: {}, events: [] },
+  );
+  const [notesBusy, setNotesBusy] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
   const isDesktop = useIsDesktop();
 
@@ -98,6 +103,7 @@ export default function App() {
         if (cancelled) return;
         setUser(res.user.email);
         setBoard(fromServer(res.board));
+        void refreshJournal();
       } catch (err) {
         if (cancelled) return;
         if (err instanceof ApiError && err.status === 401) {
@@ -128,6 +134,9 @@ export default function App() {
       } else if (e.key.toLowerCase() === 'n' && !typing && user && board) {
         e.preventDefault();
         openCreate(board.columns[0]?.id ?? '');
+      } else if (e.key.toLowerCase() === 'j' && !typing && user) {
+        e.preventDefault();
+        openPanel('journal');
       }
     }
     window.addEventListener('keydown', onKey);
@@ -142,8 +151,11 @@ export default function App() {
 
   const archived = useMemo(() => board?.tasks.filter((t) => t.archived) ?? [], [board]);
 
-  /** Journal entries per task, filled in once the timeline API is wired up. */
-  const entryCounts = useMemo<Record<string, number>>(() => ({}), []);
+  /** Timeline for the task currently open in the editor. */
+  const editingEvents = useMemo(
+    () => (editing ? journal.events.filter((e) => e.taskId === editing.id) : []),
+    [journal.events, editing],
+  );
 
   const openTasks = useMemo(() => board?.tasks.filter((t) => !t.archived) ?? [], [board]);
   const doneCount = useMemo(() => {
@@ -161,6 +173,45 @@ export default function App() {
     (filters.overdueOnly ? 1 : 0) +
     (filters.showArchived ? 1 : 0);
 
+  async function refreshJournal() {
+    try {
+      setJournal(await api.journal());
+    } catch {
+      // journal is supplementary; the board still works without it
+    }
+  }
+
+  /** Journal counts drive the badge on each card. */
+  const entryCounts = journal.counts;
+
+  async function handleAddNote(taskId: string, note: string) {
+    setNotesBusy(true);
+    try {
+      const event = await api.addNote(taskId, note);
+      setJournal((j) => ({
+        counts: { ...j.counts, [taskId]: (j.counts[taskId] ?? 0) + 1 },
+        events: [event, ...j.events],
+      }));
+    } catch (err) {
+      window.alert(err instanceof ApiError ? err.message : 'Could not log that entry.');
+    } finally {
+      setNotesBusy(false);
+    }
+  }
+
+  /** Jump from a journal entry to the card it belongs to. */
+  function openFromJournal(taskId: string) {
+    const task = board?.tasks.find((t) => t.id === taskId);
+    if (!task) {
+      window.alert('That card no longer exists — the entry is kept for the record.');
+      return;
+    }
+    setPanel(null);
+    setRailOpen(false);
+    setCreating(false);
+    setEditing(task);
+  }
+
   /** Run a mutation: optimistic update, send to server, reconcile with server board. */
   async function commit(call: Promise<BoardState>, optimistic?: BoardState) {
     if (optimistic) setBoard(optimistic);
@@ -173,6 +224,8 @@ export default function App() {
       } catch {
         // keep optimistic state
       }
+    } finally {
+      void refreshJournal();
     }
   }
 
@@ -186,6 +239,12 @@ export default function App() {
     setCreateColumnId(columnId || board.columns[0]?.id || '');
     setEditing(null);
     setCreating(true);
+  }
+
+  function openPanel(p: PanelName) {
+    setPanel(p);
+    setRailOpen(true);
+    if (p === 'journal') void refreshJournal();
   }
 
   function parseTags(input: string): string[] {
@@ -283,7 +342,8 @@ export default function App() {
 
   function exportJson() {
     if (!board) return;
-    const blob = new Blob([JSON.stringify(board, null, 2)], { type: 'application/json' });
+    const payload = { ...board, events: journal.events };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -296,9 +356,9 @@ export default function App() {
     const reader = new FileReader();
     reader.onload = () => {
       try {
-        const parsed = JSON.parse(String(reader.result)) as BoardState;
+        const parsed = JSON.parse(String(reader.result)) as BoardState & { events?: JournalEvent[] };
         if (!Array.isArray(parsed.columns) || !Array.isArray(parsed.tasks)) throw new Error('bad');
-        void commit(api.replaceBoard(parsed));
+        void commit(api.replaceBoard(parsed, parsed.events ?? []));
       } catch {
         window.alert('Invalid backup file.');
       }
@@ -402,10 +462,7 @@ export default function App() {
             setRailOpen(true);
           }
         }}
-        onOpenPanel={(p) => {
-          setPanel(p);
-          setRailOpen(true);
-        }}
+        onOpenPanel={openPanel}
         onClosePanel={() => {
           setPanel(null);
           setRailOpen(false);
@@ -441,7 +498,11 @@ export default function App() {
           }
         }}
         journalList={
-          <p className="text-[12.5px] text-kb-faint">Nothing journalled yet.</p>
+          <JournalPanel
+            events={journal.events}
+            onOpenTask={openFromJournal}
+            onRefresh={() => void refreshJournal()}
+          />
         }
         archiveList={
           archived.length === 0 ? (
@@ -572,6 +633,8 @@ export default function App() {
           task={editing}
           columns={board.columns}
           initialColumnId={createColumnId || board.columns[0]?.id || ''}
+          events={editingEvents}
+          notesBusy={notesBusy}
           onClose={() => {
             setEditing(null);
             setCreating(false);
@@ -585,6 +648,7 @@ export default function App() {
             void commit(api.updateTask(id, { archived: archivedFlag }));
             setEditing(null);
           }}
+          onAddNote={handleAddNote}
         />
       )}
     </div>
