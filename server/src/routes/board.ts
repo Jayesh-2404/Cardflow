@@ -3,7 +3,6 @@ import { prisma } from '../db';
 import { requireAuth, type AuthedRequest } from '../middleware';
 import { cleanTags, parseDueDate, toDateString, validPriority } from '../validate';
 import { getBoardState, seedDefaults } from '../board';
-import type { BoardDTO } from '../board';
 import { countsFor, FIELD_LABELS, isEventType, recent, record, timelineFor } from '../journal';
 
 export const boardRouter = Router();
@@ -416,6 +415,21 @@ boardRouter.delete('/tasks/:id', async (req, res) => {
   res.json({ board: await getBoardState(userId) });
 });
 
+/** Shape accepted by import. Server-assigned fields (createdAt) are ignored. */
+interface ParsedBoard {
+  columns: { id: string; title: string }[];
+  tasks: {
+    id: string;
+    columnId: string;
+    title: string;
+    description: string;
+    priority: 'low' | 'medium' | 'high';
+    dueDate: string | null;
+    tags: string[];
+    archived: boolean;
+  }[];
+}
+
 /** Replace the entire board (used by JSON import). Client ids are preserved. */
 boardRouter.post('/replace', async (req, res) => {
   const userId = uid(req);
@@ -511,14 +525,14 @@ function parseEventPayload(events: unknown): ParsedEvent[] {
   return out.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
 }
 
-function parseBoardPayload(board: unknown): BoardDTO | null {
+function parseBoardPayload(board: unknown): ParsedBoard | null {
   if (typeof board !== 'object' || board === null) return null;
   const { columns, tasks } = board as { columns?: unknown; tasks?: unknown };
   if (!Array.isArray(columns) || !Array.isArray(tasks)) return null;
   if (columns.length === 0 || columns.length > 50) return null;
   if (tasks.length > 5000) return null;
   const colIds = new Set<string>();
-  const cleanCols: BoardDTO['columns'] = [];
+  const cleanCols: ParsedBoard['columns'] = [];
   for (const c of columns) {
     if (typeof c !== 'object' || c === null) return null;
     const { id, title } = c as { id?: unknown; title?: unknown };
@@ -527,7 +541,7 @@ function parseBoardPayload(board: unknown): BoardDTO | null {
     colIds.add(id);
     cleanCols.push({ id: id.slice(0, 60), title: title.trim().slice(0, 60) });
   }
-  const cleanTasks: BoardDTO['tasks'] = [];
+  const cleanTasks: ParsedBoard['tasks'] = [];
   const seen = new Set<string>();
   for (const t of tasks) {
     if (typeof t !== 'object' || t === null) return null;
@@ -576,11 +590,13 @@ boardRouter.delete('/', async (req, res) => {
 /** Clear + reseed demo data. */
 boardRouter.post('/reset', async (req, res) => {
   const userId = uid(req);
+  // One transaction for wipe + seed: two interactive transactions in a row
+  // exhaust the pooled connection and fail with P2028.
   await prisma.$transaction(async (tx) => {
     await tx.taskEvent.deleteMany({ where: { userId } });
     await tx.task.deleteMany({ where: { userId } });
     await tx.column.deleteMany({ where: { userId } });
+    await seedDefaults(userId, tx);
   });
-  await seedDefaults(userId);
   res.json({ board: await getBoardState(userId) });
 });

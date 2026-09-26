@@ -1,4 +1,5 @@
 import { prisma } from './db';
+import type { PrismaClient } from '@prisma/client';
 import { toDateString } from './validate';
 
 export interface BoardColumnDTO {
@@ -48,27 +49,45 @@ export async function getBoardState(userId: string): Promise<BoardDTO> {
   };
 }
 
-/** Default Todo/Doing/Done + welcome task. Used on register and board reset. */
-export async function seedDefaults(userId: string): Promise<void> {
+/**
+ * Default Todo/Doing/Done + welcome task. Used on register and board reset.
+ *
+ * Takes an optional transaction client so callers that are already inside a
+ * transaction (board reset) do not open a second one — two concurrent
+ * interactive transactions exhaust the pooled Postgres connection and fail
+ * with P2028.
+ */
+export async function seedDefaults(
+  userId: string,
+  db: Pick<PrismaClient, 'column' | 'task' | 'taskEvent'> = prisma,
+): Promise<void> {
   const now = new Date();
-  await prisma.$transaction(async (tx) => {
-    const todo = await tx.column.create({
-      data: { userId, title: 'Todo', position: 0 },
-    });
-    await tx.column.create({ data: { userId, title: 'Doing', position: 1 } });
-    await tx.column.create({ data: { userId, title: 'Done', position: 2 } });
-    await tx.task.create({
-      data: {
-        userId,
-        columnId: todo.id,
-        title: 'Welcome — drag me to Doing',
-        description: 'Press N for a new task, / to search.',
-        priority: 'medium',
-        tags: ['start'],
-        position: 0,
-        createdAt: now,
-        updatedAt: now,
-      },
-    });
+  const todo = await db.column.create({ data: { userId, title: 'Todo', position: 0 } });
+  await db.column.create({ data: { userId, title: 'Doing', position: 1 } });
+  await db.column.create({ data: { userId, title: 'Done', position: 2 } });
+  const welcome = await db.task.create({
+    data: {
+      userId,
+      columnId: todo.id,
+      title: 'Welcome — drag me to Doing',
+      description: 'Press N for a new task, / to filter, Ctrl+K for commands.',
+      priority: 'medium',
+      tags: ['start'],
+      position: 0,
+      createdAt: now,
+      updatedAt: now,
+    },
+  });
+  // Journal the seed too, so a fresh or reset board has a truthful timeline.
+  await db.taskEvent.create({
+    data: {
+      userId,
+      taskId: welcome.id,
+      taskTitle: welcome.title,
+      type: 'created',
+      summary: 'Created in Todo',
+      toColumn: 'Todo',
+      createdAt: now,
+    },
   });
 }

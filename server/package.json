@@ -12,7 +12,8 @@
     "start": "node dist/index.js",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
-    "db:deploy": "prisma migrate deploy"
+    "db:deploy": "prisma migrate deploy",
+    "e2e:seed": "tsx scripts/seed-e2e.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.0.0",

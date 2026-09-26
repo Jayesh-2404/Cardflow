@@ -98,6 +98,7 @@ export default function TaskCard({ task, entryCount, onOpen }: Props) {
         {entryCount > 0 && (
           <span
             title={`${entryCount} journal ${entryCount === 1 ? 'entry' : 'entries'}`}
+            data-testid="entry-count"
             className="inline-flex items-center gap-0.5 font-mono-kb text-[10.5px] leading-none text-kb-faint"
           >
             <Icon name="clock" size={11} strokeWidth={2} />

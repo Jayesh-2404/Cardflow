@@ -78,6 +78,7 @@ export default function App() {
   const [notesBusy, setNotesBusy] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
+  const journalQueue = useRef<Promise<void>>(Promise.resolve());
   const isDesktop = useIsDesktop();
 
   const sensors = useSensors(
@@ -211,12 +212,20 @@ export default function App() {
     (filters.overdueOnly ? 1 : 0) +
     (filters.showArchived ? 1 : 0);
 
-  async function refreshJournal() {
-    try {
-      setJournal(await api.journal());
-    } catch {
-      // journal is supplementary; the board still works without it
-    }
+  /**
+   * Journal refreshes are serialised through one promise chain. Without this,
+   * a slow response issued before a note was logged lands after it and
+   * overwrites the newer state, silently dropping the entry from the UI.
+   */
+  function refreshJournal(): Promise<void> {
+    journalQueue.current = journalQueue.current.then(async () => {
+      try {
+        setJournal(await api.journal());
+      } catch {
+        // journal is supplementary; the board still works without it
+      }
+    });
+    return journalQueue.current;
   }
 
   /** Journal counts drive the badge on each card. */
@@ -226,9 +235,11 @@ export default function App() {
     setNotesBusy(true);
     try {
       const event = await api.addNote(taskId, note);
+      // Let any queued refresh land first so ordering is preserved.
+      await journalQueue.current;
       setJournal((j) => ({
         counts: { ...j.counts, [taskId]: (j.counts[taskId] ?? 0) + 1 },
-        events: [event, ...j.events],
+        events: [event, ...j.events.filter((e) => e.id !== event.id)],
       }));
     } catch (err) {
       window.alert(err instanceof ApiError ? err.message : 'Could not log that entry.');
