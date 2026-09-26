@@ -1,9 +1,10 @@
 import { Router } from 'express';
 import { prisma } from '../db';
 import { requireAuth, type AuthedRequest } from '../middleware';
-import { cleanTags, parseDueDate, validPriority } from '../validate';
+import { cleanTags, parseDueDate, toDateString, validPriority } from '../validate';
 import { getBoardState, seedDefaults } from '../board';
 import type { BoardDTO } from '../board';
+import { countsFor, FIELD_LABELS, isEventType, recent, record, timelineFor } from '../journal';
 
 export const boardRouter = Router();
 boardRouter.use(requireAuth);
@@ -23,8 +24,79 @@ async function renumberColumn(userId: string, columnId: string): Promise<void> {
   );
 }
 
+/** List titles for the current user, keyed by id — used to phrase move events. */
+async function columnTitles(userId: string): Promise<Map<string, string>> {
+  const cols = await prisma.column.findMany({ where: { userId }, select: { id: true, title: true } });
+  return new Map(cols.map((c) => [c.id, c.title]));
+}
+
 boardRouter.get('/', async (req, res) => {
   res.json({ board: await getBoardState(uid(req)) });
+});
+
+/** Journal sidecar data: entry counts for card badges + the global feed. */
+boardRouter.get('/journal', async (req, res) => {
+  const userId = uid(req);
+  const limitRaw = (req.query as { limit?: unknown }).limit;
+  const limit = typeof limitRaw === 'string' ? Number(limitRaw) : 120;
+  const [counts, events] = await Promise.all([
+    countsFor(userId),
+    recent(userId, Number.isFinite(limit) ? limit : 120),
+  ]);
+  res.json({ counts, events });
+});
+
+/** Full timeline for a single task. */
+boardRouter.get('/tasks/:id/timeline', async (req, res) => {
+  const userId = uid(req);
+  const task = await prisma.task.findFirst({
+    where: { id: req.params.id, userId },
+    select: { id: true },
+  });
+  if (!task) {
+    res.status(404).json({ error: 'not found' });
+    return;
+  }
+  res.json({ events: await timelineFor(userId, task.id) });
+});
+
+/** Append a free-form journal note. */
+boardRouter.post('/tasks/:id/notes', async (req, res) => {
+  const userId = uid(req);
+  const task = await prisma.task.findFirst({ where: { id: req.params.id, userId } });
+  if (!task) {
+    res.status(404).json({ error: 'not found' });
+    return;
+  }
+  const { note } = req.body as { note?: unknown };
+  if (typeof note !== 'string' || !note.trim()) {
+    res.status(400).json({ error: 'note required' });
+    return;
+  }
+  const body = note.trim().slice(0, 2000);
+  const event = await prisma.taskEvent.create({
+    data: {
+      userId,
+      taskId: task.id,
+      taskTitle: task.title,
+      type: 'note',
+      summary: body.length > 120 ? `${body.slice(0, 117)}…` : body,
+      detail: body,
+    },
+  });
+  res.status(201).json({
+    event: {
+      id: event.id,
+      taskId: event.taskId,
+      taskTitle: event.taskTitle,
+      type: 'note',
+      summary: event.summary,
+      detail: event.detail,
+      fromColumn: null,
+      toColumn: null,
+      createdAt: event.createdAt.toISOString(),
+    },
+  });
 });
 
 boardRouter.post('/columns', async (req, res) => {
@@ -54,6 +126,24 @@ boardRouter.patch('/columns/:id', async (req, res) => {
     return;
   }
   await prisma.column.update({ where: { id: col.id }, data: { title: title.trim() } });
+  if (col.title !== title.trim()) {
+    // One entry per card that changed lists, so the journal stays truthful.
+    const moved = await prisma.task.findMany({
+      where: { userId, columnId: col.id },
+      select: { id: true, title: true },
+    });
+    await Promise.all(
+      moved.map((t) =>
+        record({
+          userId,
+          taskId: t.id,
+          taskTitle: t.title,
+          type: 'updated',
+          summary: `List renamed to "${title.trim()}"`,
+        }),
+      ),
+    );
+  }
   res.json({ board: await getBoardState(userId) });
 });
 
@@ -110,7 +200,7 @@ boardRouter.post('/tasks', async (req, res) => {
     return;
   }
   const count = await prisma.task.count({ where: { userId, columnId } });
-  await prisma.task.create({
+  const created = await prisma.task.create({
     data: {
       userId,
       columnId,
@@ -121,6 +211,15 @@ boardRouter.post('/tasks', async (req, res) => {
       tags: cleanTags(tags),
       position: count,
     },
+  });
+  const titles = await columnTitles(userId);
+  await record({
+    userId,
+    taskId: created.id,
+    taskTitle: created.title,
+    type: 'created',
+    summary: `Created in ${titles.get(columnId) ?? 'a list'}`,
+    toColumn: titles.get(columnId) ?? null,
   });
   res.status(201).json({ board: await getBoardState(userId) });
 });
@@ -205,7 +304,48 @@ boardRouter.patch('/tasks/:id', async (req, res) => {
     }
   }
   await prisma.task.update({ where: { id: task.id }, data });
-  if (data.columnId) await renumberColumn(userId, task.columnId);
+
+  // Journal: one entry describing exactly which fields actually changed.
+  const changed: string[] = [];
+  if (data.title !== undefined && data.title !== task.title) changed.push(FIELD_LABELS.title);
+  if (data.description !== undefined && data.description !== task.description)
+    changed.push(FIELD_LABELS.description);
+  if (data.priority !== undefined && data.priority !== task.priority)
+    changed.push(FIELD_LABELS.priority);
+  if (data.dueDate !== undefined) {
+    const before = toDateString(task.dueDate);
+    const after = toDateString(data.dueDate);
+    if (before !== after) changed.push(FIELD_LABELS.dueDate);
+  }
+  if (data.tags !== undefined && data.tags.join(',') !== task.tags.join(','))
+    changed.push(FIELD_LABELS.tags);
+  if (data.archived !== undefined && data.archived !== task.archived)
+    changed.push(FIELD_LABELS.archived);
+
+  const titles = await columnTitles(userId);
+  if (data.columnId) {
+    await renumberColumn(userId, task.columnId);
+    await record({
+      userId,
+      taskId: task.id,
+      taskTitle: data.title ?? task.title,
+      type: 'moved',
+      summary: `Moved ${titles.get(task.columnId) ?? 'list'} → ${
+        titles.get(data.columnId) ?? 'list'
+      }`,
+      fromColumn: titles.get(task.columnId) ?? null,
+      toColumn: titles.get(data.columnId) ?? null,
+    });
+  }
+  if (changed.length > 0) {
+    await record({
+      userId,
+      taskId: task.id,
+      taskTitle: data.title ?? task.title,
+      type: data.archived === true ? 'archived' : data.archived === false ? 'unarchived' : 'updated',
+      summary: `Updated ${changed.join(', ')}`,
+    });
+  }
   res.json({ board: await getBoardState(userId) });
 });
 
@@ -239,7 +379,19 @@ boardRouter.post('/tasks/:id/move', async (req, res) => {
       prisma.task.update({ where: { id: t.id }, data: { columnId, position: i } }),
     ),
   );
-  if (fromColumn !== columnId) await renumberColumn(userId, fromColumn);
+  if (fromColumn !== columnId) {
+    await renumberColumn(userId, fromColumn);
+    const titles = await columnTitles(userId);
+    await record({
+      userId,
+      taskId: task.id,
+      taskTitle: task.title,
+      type: 'moved',
+      summary: `Moved ${titles.get(fromColumn) ?? 'list'} → ${titles.get(columnId) ?? 'list'}`,
+      fromColumn: titles.get(fromColumn) ?? null,
+      toColumn: titles.get(columnId) ?? null,
+    });
+  }
   res.json({ board: await getBoardState(userId) });
 });
 
@@ -252,19 +404,30 @@ boardRouter.delete('/tasks/:id', async (req, res) => {
   }
   await prisma.task.delete({ where: { id: task.id } });
   await renumberColumn(userId, task.columnId);
+  const titles = await columnTitles(userId);
+  await record({
+    userId,
+    taskId: task.id,
+    taskTitle: task.title,
+    type: 'deleted',
+    summary: `Deleted from ${titles.get(task.columnId) ?? 'a list'}`,
+    fromColumn: titles.get(task.columnId) ?? null,
+  });
   res.json({ board: await getBoardState(userId) });
 });
 
 /** Replace the entire board (used by JSON import). Client ids are preserved. */
 boardRouter.post('/replace', async (req, res) => {
   const userId = uid(req);
-  const { board } = req.body as { board?: unknown };
+  const { board, events } = req.body as { board?: unknown; events?: unknown };
   const parsed = parseBoardPayload(board);
   if (!parsed) {
     res.status(400).json({ error: 'bad board payload' });
     return;
   }
+  const parsedEvents = parseEventPayload(events);
   await prisma.$transaction(async (tx) => {
+    await tx.taskEvent.deleteMany({ where: { userId } });
     await tx.task.deleteMany({ where: { userId } });
     await tx.column.deleteMany({ where: { userId } });
     for (let i = 0; i < parsed.columns.length; i++) {
@@ -292,9 +455,61 @@ boardRouter.post('/replace', async (req, res) => {
         },
       });
     }
+    // Journal travels with the backup, oldest first, so ordering is preserved.
+    for (const e of parsedEvents) {
+      await tx.taskEvent.create({
+        data: {
+          userId,
+          taskId: e.taskId,
+          taskTitle: e.taskTitle,
+          type: e.type,
+          summary: e.summary,
+          detail: e.detail,
+          fromColumn: e.fromColumn,
+          toColumn: e.toColumn,
+          createdAt: e.createdAt,
+        },
+      });
+    }
   });
   res.json({ board: await getBoardState(userId) });
 });
+
+interface ParsedEvent {
+  taskId: string;
+  taskTitle: string;
+  type: string;
+  summary: string;
+  detail: string | null;
+  fromColumn: string | null;
+  toColumn: string | null;
+  createdAt: Date;
+}
+
+function parseEventPayload(events: unknown): ParsedEvent[] {
+  if (!Array.isArray(events)) return [];
+  const out: ParsedEvent[] = [];
+  for (const raw of events.slice(0, 20000)) {
+    if (typeof raw !== 'object' || raw === null) continue;
+    const e = raw as Record<string, unknown>;
+    if (typeof e.taskId !== 'string' || typeof e.taskTitle !== 'string') continue;
+    if (typeof e.summary !== 'string' || !e.summary.trim()) continue;
+    if (!isEventType(e.type)) continue;
+    const when = typeof e.createdAt === 'string' ? new Date(e.createdAt) : null;
+    if (!when || Number.isNaN(when.getTime())) continue;
+    out.push({
+      taskId: e.taskId.slice(0, 60),
+      taskTitle: e.taskTitle.slice(0, 200),
+      type: e.type,
+      summary: e.summary.trim().slice(0, 300),
+      detail: typeof e.detail === 'string' ? e.detail.slice(0, 2000) : null,
+      fromColumn: typeof e.fromColumn === 'string' ? e.fromColumn.slice(0, 60) : null,
+      toColumn: typeof e.toColumn === 'string' ? e.toColumn.slice(0, 60) : null,
+      createdAt: when,
+    });
+  }
+  return out.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+}
 
 function parseBoardPayload(board: unknown): BoardDTO | null {
   if (typeof board !== 'object' || board === null) return null;
@@ -347,10 +562,11 @@ function parseBoardPayload(board: unknown): BoardDTO | null {
   return { columns: cleanCols, tasks: cleanTasks };
 }
 
-/** Erase everything (columns + tasks). */
+/** Erase everything (columns + tasks + journal). */
 boardRouter.delete('/', async (req, res) => {
   const userId = uid(req);
   await prisma.$transaction(async (tx) => {
+    await tx.taskEvent.deleteMany({ where: { userId } });
     await tx.task.deleteMany({ where: { userId } });
     await tx.column.deleteMany({ where: { userId } });
   });
@@ -361,6 +577,7 @@ boardRouter.delete('/', async (req, res) => {
 boardRouter.post('/reset', async (req, res) => {
   const userId = uid(req);
   await prisma.$transaction(async (tx) => {
+    await tx.taskEvent.deleteMany({ where: { userId } });
     await tx.task.deleteMany({ where: { userId } });
     await tx.column.deleteMany({ where: { userId } });
   });

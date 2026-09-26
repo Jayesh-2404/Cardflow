@@ -36,6 +36,27 @@ interface SessionResponse extends BoardResponse {
   user: { email: string };
 }
 
+export type EventType =
+  | 'created'
+  | 'updated'
+  | 'moved'
+  | 'archived'
+  | 'unarchived'
+  | 'note'
+  | 'deleted';
+
+export interface JournalEvent {
+  id: string;
+  taskId: string;
+  taskTitle: string;
+  type: EventType;
+  summary: string;
+  detail: string | null;
+  fromColumn: string | null;
+  toColumn: string | null;
+  createdAt: string;
+}
+
 const PRIORITIES: Priority[] = ['low', 'medium', 'high'];
 
 export function fromServer(b: ServerBoard): BoardState {
@@ -158,13 +179,29 @@ export const api = {
     return fromServer((await req<BoardResponse>(`/api/board/tasks/${id}`, { method: 'DELETE' })).board);
   },
 
-  async replaceBoard(board: BoardState): Promise<BoardState> {
-    return fromServer((await req<BoardResponse>('/api/board/replace', body({ board }))).board);
+  async replaceBoard(board: BoardState, events: JournalEvent[] = []): Promise<BoardState> {
+    return fromServer(
+      (await req<BoardResponse>('/api/board/replace', body({ board, events }))).board,
+    );
   },
   async clearBoard(): Promise<BoardState> {
     return fromServer((await req<BoardResponse>('/api/board', { method: 'DELETE' })).board);
   },
   async resetBoard(): Promise<BoardState> {
     return fromServer((await req<BoardResponse>('/api/board/reset', body({}))).board);
+  },
+
+  /** Entry counts per task plus the cross-task feed, in one round trip. */
+  async journal(limit = 150): Promise<{ counts: Record<string, number>; events: JournalEvent[] }> {
+    return req<{ counts: Record<string, number>; events: JournalEvent[] }>(
+      `/api/board/journal?limit=${limit}`,
+    );
+  },
+  async timeline(taskId: string): Promise<JournalEvent[]> {
+    return (await req<{ events: JournalEvent[] }>(`/api/board/tasks/${taskId}/timeline`)).events;
+  },
+  async addNote(taskId: string, note: string): Promise<JournalEvent> {
+    return (await req<{ event: JournalEvent }>(`/api/board/tasks/${taskId}/notes`, body({ note })))
+      .event;
   },
 };

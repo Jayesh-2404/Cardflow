@@ -48,3 +48,24 @@ model Task {
 
   @@index([userId, columnId, position])
 }
+
+/*
+  Append-only journal. Deliberately has no foreign key to Task: a journal that
+  loses its history when you archive or delete a card is useless, so entries
+  keep a denormalised taskTitle snapshot and survive the task row.
+*/
+model TaskEvent {
+  id         String   @id @default(cuid())
+  userId     String
+  taskId     String
+  taskTitle  String
+  type       String
+  summary    String
+  detail     String?
+  fromColumn String?
+  toColumn   String?
+  createdAt  DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([taskId, createdAt])
+}
