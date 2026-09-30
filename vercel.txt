@@ -1,0 +1,107 @@
+================================================================================
+ VERCEL  -  kanban board frontend (Vite + React + Tailwind)
+ Service: https://notes-dusky-eta-79.vercel.app/
+ Repo:    Jayesh-2404/Notes   Branch: main
+================================================================================
+
+
+--------------------------------------------------------------------------------
+ 1. DASHBOARD SETTINGS   (Project -> Settings -> General / Build & Deploy)
+--------------------------------------------------------------------------------
+   Root Directory : projects/kanban-board
+
+   Framework Preset  : Vite
+   Build Command     : npm run build        (or leave blank, vercel.json handles it)
+   Output Directory  : dist
+
+   Already committed at projects/kanban-board/vercel.json:
+       { "framework": "vite",
+         "buildCommand": "npm run build",
+         "outputDirectory": "dist",
+         "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }] }
+
+   The rewrite is what makes client-side routing work on refresh/deep links.
+
+
+--------------------------------------------------------------------------------
+ 2. ENVIRONMENT VARIABLES   (Project -> Settings -> Environment Variables)
+--------------------------------------------------------------------------------
+   VITE_API_URL=https://notes-jo06.onrender.com
+
+   NODE_ENV=production is injected by Vercel automatically. Do not set it.
+
+
+--------------------------------------------------------------------------------
+ 3. WHAT THIS VARIABLE IS FOR
+--------------------------------------------------------------------------------
+   VITE_API_URL
+       Base URL of the kanban API, consumed at src/lib/api.ts:3-4 as
+           export const API_BASE =
+               import.meta.env.VITE_API_URL || 'http://localhost:4000'
+
+       If it is unset the build still succeeds and the frontend still deploys.
+       It only fails at runtime, in the browser, as
+           "Cannot reach the API at http://localhost:4000"
+
+       That is the single most common Vercel misconfiguration for this project.
+
+   NO OTHER VARS
+       The frontend has exactly one env var. There is deliberately no
+       VITE_JWT_SECRET or similar. All auth is server-side; the browser only
+       ever holds an httpOnly cookie. Never put a secret in a VITE_ prefixed
+       var, because Vite inlines those into the public JS bundle.
+
+
+--------------------------------------------------------------------------------
+ 4. BUILD-TIME, NOT RUNTIME  (this is the gotcha)
+--------------------------------------------------------------------------------
+   Any VITE_ prefixed variable is inlined into the bundle AT BUILD TIME.
+   Changing VITE_API_URL in the dashboard does nothing until you redeploy.
+
+   Project -> Deployments -> redeploy the latest commit (or push a no-op commit
+   to force a fresh build).
+
+   Verify the deployed bundle actually has the right URL:
+       curl -s https://notes-dusky-eta-79.vercel.app/ | grep -o '/assets/[^"]*\.js'
+       curl -s https://notes-dusky-eta-79.vercel.app/assets/<that-file>.js \
+            | grep -o 'https://[a-z0-9.-]*onrender\.com'
+
+   If that grep prints nothing, the old bundle is still being served.
+
+
+--------------------------------------------------------------------------------
+ 5. PRODUCTION ENVIRONMENTS
+--------------------------------------------------------------------------------
+   Vercel scopes variables per environment: Production / Preview / Development.
+   A value set only under "Preview" will NOT apply to the production URL above.
+   Add it under Production.
+
+
+--------------------------------------------------------------------------------
+ 6. END-TO-END CHECKLIST
+--------------------------------------------------------------------------------
+   [ ] Render:  Root Directory = server
+   [ ] Render:  Build  = npm ci --include=dev && npm run build
+   [ ] Render:  Start  = npm run db:deploy && npm start
+   [ ] Render:  FRONTEND_ORIGIN = https://notes-dusky-eta-79.vercel.app
+   [ ] Render:  DATABASE_URL, DIRECT_URL, JWT_SECRET, NODE_ENV=production set
+   [ ] Render:  build log shows "Generated Prisma Client" and no TS errors
+   [ ] curl https://notes-jo06.onrender.com/api/health  ->  200 {"ok":true}
+   [ ] curl -H "Origin: https://notes-dusky-eta-79.vercel.app" \
+          https://notes-jo06.onrender.com/api/health
+          ->  access-control-allow-origin: https://notes-dusky-eta-79.vercel.app
+   [ ] Vercel:  VITE_API_URL = https://notes-jo06.onrender.com  (Production env)
+   [ ] Vercel:  redeploy
+   [ ] Open https://notes-dusky-eta-79.vercel.app/ -> login screen, no CORS error
+
+   The frontend and the API are on different domains, so the browser treats
+   this as a cross-origin request every single time. CORS is not optional
+   here, and a wrong FRONTEND_ORIGIN is invisible to curl but fatal in a
+   browser.
+
+
+================================================================================
+ DO NOT PASTE SECRETS INTO THIS FILE.
+ *.txt is not covered by any .gitignore and this repo is public.
+ Only URLs, key names, and instructions belong here.
+================================================================================

@@ -1,0 +1,135 @@
+================================================================================
+ RENDER  -  kanban API (Express + Prisma)
+ Service: https://notes-jo06.onrender.com
+ Repo:    Jayesh-2404/Notes   Branch: main
+================================================================================
+
+
+--------------------------------------------------------------------------------
+ 1. DASHBOARD SETTINGS   (Dashboard -> service -> Settings -> Build & Deploy)
+--------------------------------------------------------------------------------
+   Root Directory : server
+   Build Command  : npm ci --include=dev && npm run build
+   Start Command  : npm run db:deploy && npm start
+   Health Check   : /api/health
+
+   !! WHY "--include=dev" IS MANDATORY, NOT OPTIONAL !!
+   This service sets NODE_ENV=production, because that var is needed at
+   runtime (see section 2). Render passes env vars to the BUILD phase too.
+   And npm silently skips ALL devDependencies when NODE_ENV=production.
+
+   Every @types/* package is a devDependency:
+       @types/express  @types/jsonwebtoken  @types/cors
+       @types/cookie-parser  @types/bcryptjs
+   So they never get installed, and the build dies with a wall of errors:
+
+       error TS7016: Could not find a declaration file for module 'express'
+       error TS7006: Parameter 'req' implicitly has an 'any' type
+       error TS7006: Parameter 'res' implicitly has an 'any' type
+
+   The --include=dev flag overrides NODE_ENV and forces devDependencies to
+   install. Without it the build CANNOT succeed. Do not simplify this back to
+   plain "npm ci" or "npm install".
+
+   WHY "server" AND NOT "projects/kanban-board"
+   The root dir points at which package.json Render picks up.
+   "projects/kanban-board" is the VITE FRONTEND (kanban-board), so Render runs
+   `npm run dev` -> `vite`, which binds to localhost only. Render's port scanner
+   sees nothing on 0.0.0.0 and the deploy times out.
+   The backend package is "kanban-server", in ./server
+
+   WHY THE BUILD COMMAND MATTERS
+   Plain `npm install` never runs tsc, so dist/ is never created and
+   `node dist/index.js` would crash. The server build script is
+   `prisma generate && tsc` and you need both.
+
+   THE CONFUSING PART OF THE @types FAILURE
+   If devDependencies were skipped, you would expect "tsc: command not found".
+   You do not get that, because `typescript` and `prisma` both arrive as
+   TRANSITIVE dependencies of production packages. So prisma generate and tsc
+   both run fine, and then tsc immediately fails on the missing @types/*.
+   That is why the log looks like a TypeScript problem rather than an install
+   problem. It is an install problem.
+
+   WHY db:deploy IS IN THE START COMMAND
+   Two migrations must land before serving:
+     20260919151453_init
+     20260926181646_add_task_events
+
+
+--------------------------------------------------------------------------------
+ 2. ENVIRONMENT VARIABLES   (Dashboard -> service -> Environment -> Add)
+--------------------------------------------------------------------------------
+   DATABASE_URL=<your neon POOLED url>
+   DIRECT_URL=<your neon DIRECT url>
+   JWT_SECRET=<32+ random chars>
+   FRONTEND_ORIGIN=https://notes-dusky-eta-79.vercel.app
+   NODE_ENV=production
+
+   PORT is injected by Render automatically. Do not set it.
+
+   Generate a JWT secret:
+       openssl rand -base64 32
+
+
+--------------------------------------------------------------------------------
+ 3. WHAT EACH VARIABLE IS FOR
+--------------------------------------------------------------------------------
+   DATABASE_URL
+       Neon POOLED connection string. Used at runtime for normal queries.
+
+   DIRECT_URL
+       Neon DIRECT (non-pooled) connection string. Required by
+       `prisma migrate deploy` and by `prisma generate` to resolve the schema.
+       Pooled connections do not support the DDL that migrations need.
+
+   JWT_SECRET
+       Signs and verifies session tokens. env.ts throws at boot if this is
+       missing or shorter than 32 characters. Server-side only, never in the
+       frontend.
+
+   FRONTEND_ORIGIN                       <-- the one that bit us
+       Exact CORS allow-origin for the Vercel frontend. Must match character
+       for character, including the https:// scheme and no trailing slash.
+
+       If it is wrong, the API still returns 200 {"ok":true} to curl, but the
+       browser refuses to hand the response to the page. The UI then shows
+       "API unreachable" even though the API is completely healthy. This is
+       the single most confusing failure in this setup.
+
+   NODE_ENV
+       "production"
+
+
+--------------------------------------------------------------------------------
+ 4. VERIFY AFTER SAVING  (always restart the service after editing env vars)
+--------------------------------------------------------------------------------
+   curl -i https://notes-jo06.onrender.com/api/health
+
+   Expect BOTH of these:
+       HTTP/2 200
+       access-control-allow-origin: https://notes-dusky-eta-79.vercel.app
+       {"ok":true}
+
+   The access-control-allow-origin value is the whole test. If it says
+   http://localhost:5173, FRONTEND_ORIGIN was not picked up.
+
+   For a real browser test, add the Origin header:
+       curl -i -H "Origin: https://notes-dusky-eta-79.vercel.app" \
+            https://notes-jo06.onrender.com/api/health
+
+
+--------------------------------------------------------------------------------
+ 5. FREE TIER NOTE
+--------------------------------------------------------------------------------
+   Free instances sleep after ~15 minutes idle. The first request after that
+   takes 30-50s to wake. A timeout during that window looks exactly like a
+   dead API, but it is only a sleeping container. Retry after a minute, or use
+   a paid instance.
+
+
+================================================================================
+ DO NOT PASTE SECRETS INTO THIS FILE.
+ *.txt is not covered by any .gitignore and this repo is public.
+ Only URLs, key names, and instructions belong here.
+================================================================================
