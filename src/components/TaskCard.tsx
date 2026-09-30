@@ -25,6 +25,8 @@ interface Props {
 export default function TaskCard({ task, entryCount, onOpen }: Props) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: task.id,
+    // `type` lets the board tell a card drag from a list drag in one DndContext.
+    data: { type: 'card', columnId: task.columnId },
   });
 
   const due = dueMeta(task.dueDate);

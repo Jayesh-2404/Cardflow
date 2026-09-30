@@ -1,16 +1,25 @@
 import { useState } from 'react';
-import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { useDroppable } from '@dnd-kit/core';
+import { CSS } from '@dnd-kit/utilities';
 import Icon from './Icon';
 import type { Column, Task } from '../types';
 import TaskCard from './TaskCard';
+
+/** Body droppables need an id distinct from the column's own sortable id. */
+export const bodyDroppableId = (columnId: string) => `col-body-${columnId}`;
+
+export interface ColumnDropHint {
+  side: 'left' | 'right';
+}
 
 interface Props {
   column: Column;
   tasks: Task[];
   entryCounts: Record<string, number>;
   wide?: boolean;
-  dimmed?: boolean;
+  reorderable?: boolean;
+  dragHint?: ColumnDropHint | null;
   onOpenTask: (t: Task) => void;
   onQuickAdd: (columnId: string, title: string) => void;
   onRename: (columnId: string, title: string) => void;
@@ -19,7 +28,28 @@ interface Props {
 
 export default function BoardColumn(props: Props) {
   const { column, tasks } = props;
-  const { setNodeRef, isOver } = useDroppable({ id: column.id });
+
+  // The list itself is sortable so it can be dragged horizontally. Listeners
+  // are attached only to the header grip, never the whole column, so dragging
+  // a card inside it can never be mistaken for dragging the list.
+  const {
+    attributes: gripAttributes,
+    listeners: gripListeners,
+    setNodeRef: setColumnRef,
+    transform: columnTransform,
+    transition: columnTransition,
+    isDragging: columnDragging,
+  } = useSortable({
+    id: column.id,
+    data: { type: 'column' },
+    disabled: !props.reorderable,
+  });
+
+  const { setNodeRef: setBodyRef, isOver } = useDroppable({
+    id: bodyDroppableId(column.id),
+    data: { type: 'column-body', columnId: column.id },
+  });
+
   const [adding, setAdding] = useState(false);
   const [draft, setDraft] = useState('');
   const [renaming, setRenaming] = useState(false);
@@ -32,18 +62,49 @@ export default function BoardColumn(props: Props) {
     setAdding(false);
   }
 
+  const iconBtn =
+    'grid h-6 w-6 place-items-center rounded-[5px] text-kb-faint transition-colors duration-100';
+
   return (
     <section
+      ref={setColumnRef}
+      style={{ transform: CSS.Translate.toString(columnTransform), transition: columnTransition }}
       aria-label={column.title}
       data-testid="board-column"
       data-column-id={column.id}
-      className={`flex max-h-full min-h-0 shrink-0 flex-col overflow-hidden rounded-[10px] border bg-[var(--kb-card)] transition-[border-color,box-shadow] duration-100 ${
+      className={`relative flex max-h-full min-h-0 shrink-0 flex-col overflow-hidden rounded-[10px] border transition-[border-color,box-shadow] duration-100 ${
         props.wide ? 'w-full' : 'w-[19rem]'
-      } ${isOver ? 'border-[var(--kb-accent)] shadow-[var(--kb-shadow-md)]' : 'kb-border'} ${
-        props.dimmed ? 'opacity-40' : ''
+      } ${
+        columnDragging
+          ? 'z-10 border-[var(--kb-accent)] opacity-90 shadow-[var(--kb-shadow-lg)]'
+          : isOver
+            ? 'border-[var(--kb-accent)] shadow-[var(--kb-shadow-md)]'
+            : 'kb-border'
       }`}
     >
-      <header className="flex shrink-0 items-center gap-1.5 border-b kb-border px-2.5 py-2">
+      {props.dragHint && (
+        <span
+          aria-hidden
+          data-testid="column-drop-hint"
+          className="pointer-events-none absolute inset-y-2 z-20 w-[3px] rounded-full bg-[var(--kb-accent)]"
+          style={props.dragHint.side === 'left' ? { left: 2 } : { right: 2 }}
+        />
+      )}
+
+      <header className="flex shrink-0 items-center gap-1 border-b kb-border px-2 py-1.5">
+        {props.reorderable && (
+          <button
+            {...gripAttributes}
+            {...gripListeners}
+            aria-label={`Reorder list ${column.title}`}
+            title="Drag to reorder this list"
+            data-testid="column-grip"
+            className={`${iconBtn} -ml-0.5 cursor-grab touch-none active:cursor-grabbing hover:bg-[var(--kb-sunken)] hover:text-kb-text`}
+          >
+            <Icon name="grip" size={14} strokeWidth={2.5} />
+          </button>
+        )}
+
         {renaming ? (
           <input
             autoFocus
@@ -62,7 +123,8 @@ export default function BoardColumn(props: Props) {
                 setRenaming(false);
               }
             }}
-            className="kb-input h-7 flex-1 min-w-0 font-medium"
+            aria-label={`Rename list ${column.title}`}
+            className="kb-input h-7 min-w-0 flex-1 font-medium"
           />
         ) : (
           <h2
@@ -76,11 +138,12 @@ export default function BoardColumn(props: Props) {
             </span>
           </h2>
         )}
+
         <button
           title="Rename list"
           aria-label={`Rename ${column.title}`}
           onClick={() => setRenaming(true)}
-          className="grid h-6 w-6 place-items-center rounded-[5px] text-kb-faint transition-colors duration-100 hover:bg-[var(--kb-sunken)] hover:text-kb-text"
+          className={`${iconBtn} hover:bg-[var(--kb-sunken)] hover:text-kb-text`}
         >
           <Icon name="pencil" size={13} />
         </button>
@@ -88,16 +151,13 @@ export default function BoardColumn(props: Props) {
           title="Delete list (cards move to the first list)"
           aria-label={`Delete ${column.title}`}
           onClick={() => props.onDelete(column.id)}
-          className="grid h-6 w-6 place-items-center rounded-[5px] text-kb-faint transition-colors duration-100 hover:bg-[var(--kb-danger-soft)] hover:text-kb-danger"
+          className={`${iconBtn} hover:bg-[var(--kb-danger-soft)] hover:text-kb-danger`}
         >
           <Icon name="trash" size={13} />
         </button>
       </header>
 
-      <div
-        ref={setNodeRef}
-        className="kb-scroll min-h-10 flex-1 space-y-1.5 overflow-y-auto p-1.5"
-      >
+      <div ref={setBodyRef} className="kb-scroll min-h-10 flex-1 space-y-1.5 overflow-y-auto p-1.5">
         <SortableContext items={tasks.map((t) => t.id)} strategy={verticalListSortingStrategy}>
           {tasks.map((t) => (
             <TaskCard
@@ -113,9 +173,7 @@ export default function BoardColumn(props: Props) {
             <span className="text-kb-faint">
               <Icon name="inbox" size={18} strokeWidth={1.5} />
             </span>
-            <p className="text-[11.5px] leading-snug text-kb-faint">
-              Empty — drop a card here
-            </p>
+            <p className="text-[11.5px] leading-snug text-kb-faint">Empty — drop a card here</p>
           </div>
         )}
       </div>

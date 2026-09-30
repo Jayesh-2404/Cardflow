@@ -112,6 +112,65 @@ boardRouter.post('/columns', async (req, res) => {
   res.status(201).json({ board: await getBoardState(userId) });
 });
 
+/**
+ * Persist a new list order. Body is the complete ordered list of column ids.
+ * Declared before `/columns/:id` so "order" is not swallowed as an id.
+ */
+boardRouter.patch('/columns/order', async (req, res) => {
+  const userId = uid(req);
+  const { order } = req.body as { order?: unknown };
+  if (!Array.isArray(order) || order.length === 0 || order.length > 50) {
+    res.status(400).json({ error: 'order must be a non-empty array of column ids' });
+    return;
+  }
+  if (!order.every((v) => typeof v === 'string')) {
+    res.status(400).json({ error: 'order must contain only column ids' });
+    return;
+  }
+  const ids = order as string[];
+
+  const cols = await prisma.column.findMany({
+    where: { userId },
+    orderBy: { position: 'asc' },
+    select: { id: true, title: true },
+  });
+  const owned = new Set(cols.map((c) => c.id));
+  if (ids.length !== cols.length || new Set(ids).size !== ids.length || ids.some((id) => !owned.has(id))) {
+    res.status(400).json({ error: 'order must list every list exactly once' });
+    return;
+  }
+
+  const previousIndex = new Map(cols.map((c, i) => [c.id, i]));
+  await prisma.$transaction(
+    ids.map((id, i) => prisma.column.update({ where: { id }, data: { position: i } })),
+  );
+
+  // Journal only the lists that actually changed index, and only their cards,
+  // so a reorder is recorded without stamping every card on the board.
+  const movedTo = new Map<string, number>();
+  ids.forEach((id, i) => {
+    if (previousIndex.get(id) !== i) movedTo.set(id, i);
+  });
+  if (movedTo.size > 0) {
+    const affected = await prisma.task.findMany({
+      where: { userId, columnId: { in: [...movedTo.keys()] } },
+      select: { id: true, title: true, columnId: true },
+    });
+    await Promise.all(
+      affected.map((t) =>
+        record({
+          userId,
+          taskId: t.id,
+          taskTitle: t.title,
+          type: 'updated',
+          summary: `List moved to position ${(movedTo.get(t.columnId) ?? 0) + 1}`,
+        }),
+      ),
+    );
+  }
+  res.json({ board: await getBoardState(userId) });
+});
+
 boardRouter.patch('/columns/:id', async (req, res) => {
   const userId = uid(req);
   const { title } = req.body as { title?: unknown };

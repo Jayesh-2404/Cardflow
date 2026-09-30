@@ -147,6 +147,17 @@ export const api = {
       (await req<BoardResponse>(`/api/board/columns/${id}`, { method: 'PATCH', body: JSON.stringify({ title }) })).board,
     );
   },
+  /** Persist list order. `order` must list every list id exactly once. */
+  async reorderColumns(order: string[]): Promise<BoardState> {
+    return fromServer(
+      (
+        await req<BoardResponse>('/api/board/columns/order', {
+          method: 'PATCH',
+          body: JSON.stringify({ order }),
+        })
+      ).board,
+    );
+  },
   async deleteColumn(id: string): Promise<BoardState> {
     return fromServer((await req<BoardResponse>(`/api/board/columns/${id}`, { method: 'DELETE' })).board);
   },

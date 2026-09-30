@@ -5,11 +5,16 @@ import {
   TouchSensor,
   useSensor,
   useSensors,
+  closestCorners,
+  type CollisionDetection,
   type DragEndEvent,
+  type DragOverEvent,
+  type DragStartEvent,
 } from '@dnd-kit/core';
+import { SortableContext, arrayMove, horizontalListSortingStrategy } from '@dnd-kit/sortable';
 import Header from './components/Header';
 import Sidebar, { type PanelName } from './components/Sidebar';
-import BoardColumn from './components/BoardColumn';
+import BoardColumn, { bodyDroppableId, type ColumnDropHint } from './components/BoardColumn';
 import TaskEditor, { type EditorDraft } from './components/TaskEditor';
 import JournalPanel from './components/JournalPanel';
 import CommandPalette from './components/CommandPalette';
@@ -53,6 +58,22 @@ function useIsDesktop(): boolean {
   return desktop;
 }
 
+/**
+ * One DndContext drives two kinds of drag, so collision detection has to be
+ * told which kind is in flight. Without this, dragging a card over a list
+ * resolves to the list (a drop target) instead of a card, and a card dropped on
+ * an empty list has nothing to land on.
+ */
+const collisionDetection: CollisionDetection = (args) => {
+  const kind = (args.active.data.current as { type?: string } | undefined)?.type;
+  const droppableContainers = args.droppableContainers.filter((c) => {
+    const type = (c.data.current as { type?: string } | undefined)?.type;
+    if (kind === 'column') return type === 'column';
+    return type === 'card' || type === 'column-body';
+  });
+  return closestCorners({ ...args, droppableContainers });
+};
+
 export default function App() {
   const [user, setUser] = useState<string | null>(null);
   const [booting, setBooting] = useState(true);
@@ -77,8 +98,11 @@ export default function App() {
   );
   const [notesBusy, setNotesBusy] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [columnHint, setColumnHint] = useState<{ id: string } & ColumnDropHint | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const journalQueue = useRef<Promise<void>>(Promise.resolve());
+  // Last edge the dragged list was hovering, read at drop time.
+  const columnHintRef = useRef<(ColumnDropHint & { id: string }) | null>(null);
   const isDesktop = useIsDesktop();
 
   const sensors = useSensors(
@@ -359,22 +383,80 @@ export default function App() {
     setCreating(false);
   }
 
-  function handleDragEnd(e: DragEndEvent) {
+  function handleDragStart(e: DragStartEvent) {
+    if ((e.active.data.current as { type?: string } | undefined)?.type !== 'column') return;
+    columnHintRef.current = null;
+    setColumnHint(null);
+  }
+
+  /**
+   * Which edge of the hovered list the dragged one will slot into.
+   *
+   * Derived from index order rather than pointer-vs-rect centres: while a list
+   * is being dragged the sortable strategy is already shifting its neighbours,
+   * so rect maths reports the dragged list's own stale position and the
+   * indicator ends up on the wrong side. Index order is stable and is exactly
+   * what the drop below computes.
+   */
+  function handleDragOver(e: DragOverEvent) {
     if (!board) return;
-    const { active, over } = e;
-    if (!over) return;
-    const activeId = String(active.id);
-    const overId = String(over.id);
-    if (activeId === overId) return;
+    if ((e.active.data.current as { type?: string } | undefined)?.type !== 'column') return;
+    const activeId = String(e.active.id);
+    const overId = e.over ? String(e.over.id) : null;
+    const from = board.columns.findIndex((c) => c.id === activeId);
+    const overIdx = overId ? board.columns.findIndex((c) => c.id === overId) : -1;
+
+    // No hint while hovering the list itself: nothing will move.
+    if (from < 0 || overIdx < 0 || overIdx === from) {
+      columnHintRef.current = null;
+      setColumnHint(null);
+      return;
+    }
+    const next = { id: overId as string, side: overIdx < from ? 'left' : 'right' } as const;
+    columnHintRef.current = next;
+    setColumnHint(next);
+  }
+
+  function handleColumnDragEnd(activeId: string, overId: string) {
+    if (!board) return;
+    const ids = board.columns.map((c) => c.id);
+    const from = ids.indexOf(activeId);
+    const overIdx = ids.indexOf(overId);
+    if (from < 0 || overIdx < 0) return;
+
+    // Land on the edge the indicator shows, not merely "swap with the hovered
+    // list" — otherwise the hint promises a side the drop then ignores.
+    const side = columnHintRef.current?.id === overId ? columnHintRef.current.side : null;
+    let target: number;
+    if (side === null) {
+      if (from === overIdx) return;
+      target = overIdx; // no hint seen: fall back to swapping into that slot
+    } else {
+      target = side === 'left' ? overIdx : overIdx + 1;
+      if (from < target) target -= 1; // removing the dragged list shifts the rest left
+    }
+    target = Math.max(0, Math.min(target, ids.length - 1));
+    if (target === from) return;
+
+    const next = arrayMove(board.columns, from, target);
+    void commit(api.reorderColumns(next.map((c) => c.id)), { ...board, columns: next });
+  }
+
+  function handleCardDragEnd(activeId: string, overId: string) {
+    if (!board) return;
     const fromIdx = board.tasks.findIndex((t) => t.id === activeId);
     if (fromIdx < 0) return;
     const moving = board.tasks[fromIdx];
-    const overColumn = board.columns.some((c) => c.id === overId)
-      ? overId
-      : (board.tasks.find((t) => t.id === overId)?.columnId ?? moving.columnId);
+
+    // Dropping on a list body means "put this card in that list".
+    const bodyMatch = board.columns.find((c) => bodyDroppableId(c.id) === overId);
+    const overTask = board.tasks.find((t) => t.id === overId);
+    const overColumn = bodyMatch ? bodyMatch.id : (overTask?.columnId ?? moving.columnId);
+
     const rest = board.tasks.filter((t) => t.id !== activeId);
     let insertAt: number;
-    if (board.columns.some((c) => c.id === overId)) {
+    if (bodyMatch || !overTask) {
+      // No specific card hovered: append to the end of the target list.
       let seen = -1;
       for (let i = 0; i < rest.length; i++) {
         if (rest[i].columnId === overColumn) seen = i;
@@ -386,9 +468,20 @@ export default function App() {
     }
     const updated: Task = { ...moving, columnId: overColumn };
     const next = [...rest.slice(0, insertAt), updated, ...rest.slice(insertAt)];
-    const optimistic: BoardState = { ...board, tasks: next };
     const pos = next.filter((t) => t.columnId === overColumn).findIndex((t) => t.id === activeId);
-    void commit(api.moveTask(activeId, overColumn, pos), optimistic);
+    void commit(api.moveTask(activeId, overColumn, pos), { ...board, tasks: next });
+  }
+
+  function handleDragEnd(e: DragEndEvent) {
+    columnHintRef.current = null;
+    setColumnHint(null);
+    if (!board || !e.over) return;
+    const activeId = String(e.active.id);
+    const overId = String(e.over.id);
+    if (activeId === overId) return;
+    const kind = (e.active.data.current as { type?: string } | undefined)?.type;
+    if (kind === 'column') handleColumnDragEnd(activeId, overId);
+    else handleCardDragEnd(activeId, overId);
   }
 
   function addList() {
@@ -609,7 +702,14 @@ export default function App() {
         />
 
         <main className="flex min-h-0 flex-1 flex-col">
-          <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
+          <DndContext
+            sensors={sensors}
+            collisionDetection={collisionDetection}
+            onDragStart={handleDragStart}
+            onDragOver={handleDragOver}
+            onDragEnd={handleDragEnd}
+            onDragCancel={() => setColumnHint(null)}
+          >
             {!isDesktop ? (
               /* mobile: one full-width list at a time, switched by tabs */
               <div className="flex min-h-0 flex-1 flex-col">
@@ -658,29 +758,36 @@ export default function App() {
                 </div>
               </div>
             ) : (
-              /* desktop: full-height lists, horizontal scroll */
-              <div className="kb-scroll flex min-h-0 flex-1 items-stretch gap-2.5 overflow-x-auto p-2.5">
-                {board.columns.map((col) => (
-                  <BoardColumn
-                    key={col.id}
-                    column={col}
-                    tasks={visibleTasks(col.id)}
-                    entryCounts={entryCounts}
-                    onOpenTask={setEditing}
-                    onQuickAdd={quickAdd}
-                    onRename={renameCol}
-                    onDelete={deleteCol}
-                  />
-                ))}
-                <button
-                  onClick={addList}
-                  data-testid="add-list"
-                  className="flex h-[5.5rem] w-[10rem] shrink-0 flex-col items-center justify-center gap-1.5 self-start rounded-[10px] border border-dashed kb-border text-[12.5px] text-kb-muted transition-colors duration-100 hover:border-[var(--kb-border-strong)] hover:bg-[var(--kb-card)] hover:text-kb-text"
-                >
-                  <Icon name="plus" size={16} />
-                  Add list
-                </button>
-              </div>
+              /* desktop: full-height lists, reorderable by the header grip */
+              <SortableContext
+                items={board.columns.map((c) => c.id)}
+                strategy={horizontalListSortingStrategy}
+              >
+                <div className="kb-scroll flex min-h-0 flex-1 items-stretch gap-2.5 overflow-x-auto p-2.5">
+                  {board.columns.map((col) => (
+                    <BoardColumn
+                      key={col.id}
+                      column={col}
+                      tasks={visibleTasks(col.id)}
+                      entryCounts={entryCounts}
+                      reorderable
+                      dragHint={columnHint?.id === col.id ? { side: columnHint.side } : null}
+                      onOpenTask={setEditing}
+                      onQuickAdd={quickAdd}
+                      onRename={renameCol}
+                      onDelete={deleteCol}
+                    />
+                  ))}
+                  <button
+                    onClick={addList}
+                    data-testid="add-list"
+                    className="flex h-[5.5rem] w-[10rem] shrink-0 flex-col items-center justify-center gap-1.5 self-start rounded-[10px] border border-dashed kb-border text-[12.5px] text-kb-muted transition-colors duration-100 hover:border-[var(--kb-border-strong)] hover:bg-[var(--kb-card)] hover:text-kb-text"
+                  >
+                    <Icon name="plus" size={16} />
+                    Add list
+                  </button>
+                </div>
+              </SortableContext>
             )}
           </DndContext>
         </main>
