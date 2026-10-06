@@ -356,6 +356,7 @@ export default function App() {
         columnId: draft.columnId,
         projectKey,
         gitEnabled: draft.gitEnabled,
+        agentState: draft.agentState,
       };
       const optimistic: BoardState = {
         ...board,
@@ -371,6 +372,7 @@ export default function App() {
           columnId: next.columnId,
           projectKey: next.projectKey,
           gitEnabled: next.gitEnabled,
+          agentState: next.agentState,
         }),
         optimistic,
       );

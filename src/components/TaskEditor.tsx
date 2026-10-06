@@ -3,7 +3,7 @@ import Icon from './Icon';
 import { NoteComposer, Timeline } from './Timeline';
 import type { JournalEvent } from '../lib/api';
 import { absTime } from '../lib/format';
-import type { Column, Priority, Task } from '../types';
+import type { AgentState, Column, Priority, Task } from '../types';
 
 export interface EditorDraft {
   title: string;
@@ -14,6 +14,7 @@ export interface EditorDraft {
   columnId: string;
   projectKey: string;
   gitEnabled: boolean;
+  agentState: AgentState;
 }
 
 interface Props {
@@ -39,6 +40,7 @@ export function draftFromTask(t: Task): EditorDraft {
     columnId: t.columnId,
     projectKey: t.projectKey ?? '',
     gitEnabled: t.gitEnabled ?? false,
+    agentState: t.agentState ?? 'idle',
   };
 }
 
@@ -52,6 +54,7 @@ export function emptyDraft(columnId: string): EditorDraft {
     columnId,
     projectKey: '',
     gitEnabled: false,
+    agentState: 'idle',
   };
 }
 
@@ -213,6 +216,21 @@ export default function TaskEditor(props: Props) {
                   {c.title}
                 </option>
               ))}
+            </select>
+          </Field>
+
+          <Field label="Status">
+            <select
+              value={draft.agentState}
+              onChange={(e) => set('agentState', e.target.value as AgentState)}
+              aria-label="Agent status"
+              data-testid="editor-status"
+              className="kb-input h-[34px]"
+            >
+              <option value="idle">Idle</option>
+              <option value="running">Running</option>
+              <option value="under-review">Under review</option>
+              <option value="completed">Completed</option>
             </select>
           </Field>
 
