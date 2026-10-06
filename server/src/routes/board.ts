@@ -1,7 +1,16 @@
 import { Router } from 'express';
 import { prisma } from '../db';
 import { requireAuth, type AuthedRequest } from '../middleware';
-import { cleanTags, parseDueDate, toDateString, validPriority } from '../validate';
+import {
+  cleanProjectKey,
+  cleanTags,
+  parseDueDate,
+  toDateString,
+  validAgentState,
+  validBranch,
+  validCommit,
+  validPriority,
+} from '../validate';
 import { getBoardState, seedDefaults } from '../board';
 import { countsFor, FIELD_LABELS, isEventType, recent, record, timelineFor } from '../journal';
 
@@ -31,6 +40,51 @@ async function columnTitles(userId: string): Promise<Map<string, string>> {
 
 boardRouter.get('/', async (req, res) => {
   res.json({ board: await getBoardState(uid(req)) });
+});
+
+const PRIORITY_RANK: Record<string, number> = { high: 0, medium: 1, low: 2 };
+
+/** Filtered task list for agents: ?due=today|yyyy-mm-dd&project=key&limit=20 */
+boardRouter.get('/tasks', async (req, res) => {
+  const userId = uid(req);
+  const q = req.query as { due?: unknown; project?: unknown; limit?: unknown };
+  let due: Date | null = null;
+  if (q.due !== undefined) {
+    const raw = typeof q.due === 'string' ? q.due : '';
+    const day =
+      raw === 'today' ? new Date().toISOString().slice(0, 10) : raw;
+    try {
+      due = parseDueDate(day);
+    } catch {
+      res.status(400).json({ error: 'bad due (use today or yyyy-mm-dd)' });
+      return;
+    }
+  }
+  const projectKey =
+    typeof q.project === 'string' && q.project ? q.project.trim().toLowerCase().slice(0, 64) : null;
+  const limitRaw = typeof q.limit === 'string' ? Number(q.limit) : 20;
+  const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(Math.floor(limitRaw), 1), 50) : 20;
+
+  const where: { userId: string; dueDate?: { gte: Date; lt: Date }; projectKey?: string } = {
+    userId,
+  };
+  if (due) {
+    const next = new Date(due.getTime() + 24 * 60 * 60 * 1000);
+    where.dueDate = { gte: due, lt: next };
+  }
+  if (projectKey) where.projectKey = projectKey;
+
+  const rows = await prisma.task.findMany({
+    where,
+    orderBy: { position: 'asc' },
+    take: 200,
+  });
+  const ranked = rows
+    .sort((a, b) => (PRIORITY_RANK[a.priority] ?? 1) - (PRIORITY_RANK[b.priority] ?? 1))
+    .slice(0, limit);
+  const board = await getBoardState(userId);
+  const byId = new Map(board.tasks.map((t) => [t.id, t]));
+  res.json({ tasks: ranked.map((r) => byId.get(r.id)).filter(Boolean) });
 });
 
 /** Journal sidecar data: entry counts for card badges + the global feed. */
@@ -233,14 +287,17 @@ boardRouter.delete('/columns/:id', async (req, res) => {
 
 boardRouter.post('/tasks', async (req, res) => {
   const userId = uid(req);
-  const { columnId, title, description, priority, dueDate, tags } = req.body as {
-    columnId?: unknown;
-    title?: unknown;
-    description?: unknown;
-    priority?: unknown;
-    dueDate?: unknown;
-    tags?: unknown;
-  };
+  const { columnId, title, description, priority, dueDate, tags, projectKey, gitEnabled } =
+    req.body as {
+      columnId?: unknown;
+      title?: unknown;
+      description?: unknown;
+      priority?: unknown;
+      dueDate?: unknown;
+      tags?: unknown;
+      projectKey?: unknown;
+      gitEnabled?: unknown;
+    };
   if (typeof columnId !== 'string' || typeof title !== 'string' || !title.trim()) {
     res.status(400).json({ error: 'columnId + title required' });
     return;
@@ -257,6 +314,20 @@ boardRouter.post('/tasks', async (req, res) => {
     res.status(400).json({ error: 'bad dueDate (use yyyy-mm-dd)' });
     return;
   }
+  const key = cleanProjectKey(projectKey ?? '');
+  if (key === null) {
+    res.status(400).json({ error: 'bad projectKey (a-z0-9-_)' });
+    return;
+  }
+  const isolate = gitEnabled === undefined ? false : gitEnabled === true;
+  if (gitEnabled !== undefined && typeof gitEnabled !== 'boolean') {
+    res.status(400).json({ error: 'bad gitEnabled' });
+    return;
+  }
+  if (isolate && !key) {
+    res.status(400).json({ error: 'projectKey required when gitEnabled' });
+    return;
+  }
   const count = await prisma.task.count({ where: { userId, columnId } });
   const created = await prisma.task.create({
     data: {
@@ -268,6 +339,8 @@ boardRouter.post('/tasks', async (req, res) => {
       dueDate: due,
       tags: cleanTags(tags),
       position: count,
+      projectKey: key,
+      gitEnabled: isolate,
     },
   });
   const titles = await columnTitles(userId);
@@ -289,7 +362,20 @@ boardRouter.patch('/tasks/:id', async (req, res) => {
     res.status(404).json({ error: 'not found' });
     return;
   }
-  const { title, description, priority, dueDate, tags, archived, columnId } = req.body as {
+  const {
+    title,
+    description,
+    priority,
+    dueDate,
+    tags,
+    archived,
+    columnId,
+    projectKey,
+    agentState,
+    gitEnabled,
+    branch,
+    lastCommit,
+  } = req.body as {
     title?: unknown;
     description?: unknown;
     priority?: unknown;
@@ -297,6 +383,11 @@ boardRouter.patch('/tasks/:id', async (req, res) => {
     tags?: unknown;
     archived?: unknown;
     columnId?: unknown;
+    projectKey?: unknown;
+    agentState?: unknown;
+    gitEnabled?: unknown;
+    branch?: unknown;
+    lastCommit?: unknown;
   };
   const data: {
     title?: string;
@@ -307,6 +398,11 @@ boardRouter.patch('/tasks/:id', async (req, res) => {
     archived?: boolean;
     columnId?: string;
     position?: number;
+    projectKey?: string;
+    agentState?: string;
+    gitEnabled?: boolean;
+    branch?: string | null;
+    lastCommit?: string | null;
   } = {};
   if (title !== undefined) {
     if (typeof title !== 'string' || !title.trim()) {
@@ -338,6 +434,49 @@ boardRouter.patch('/tasks/:id', async (req, res) => {
     }
   }
   if (tags !== undefined) data.tags = cleanTags(tags);
+  if (projectKey !== undefined) {
+    const key = cleanProjectKey(projectKey);
+    if (key === null) {
+      res.status(400).json({ error: 'bad projectKey (a-z0-9-_)' });
+      return;
+    }
+    data.projectKey = key;
+  }
+  if (agentState !== undefined) {
+    if (!validAgentState(agentState)) {
+      res.status(400).json({ error: 'bad agentState' });
+      return;
+    }
+    data.agentState = agentState;
+  }
+  if (gitEnabled !== undefined) {
+    if (typeof gitEnabled !== 'boolean') {
+      res.status(400).json({ error: 'bad gitEnabled' });
+      return;
+    }
+    data.gitEnabled = gitEnabled;
+  }
+  if (branch !== undefined) {
+    if (branch !== null && !validBranch(branch)) {
+      res.status(400).json({ error: 'bad branch' });
+      return;
+    }
+    data.branch = branch === null ? null : (branch as string).slice(0, 128);
+  }
+  if (lastCommit !== undefined) {
+    if (lastCommit !== null && !validCommit(lastCommit)) {
+      res.status(400).json({ error: 'bad lastCommit' });
+      return;
+    }
+    data.lastCommit = lastCommit === null ? null : (lastCommit as string).slice(0, 40);
+  }
+  if (
+    (data.gitEnabled === true || (data.gitEnabled === undefined && task.gitEnabled)) &&
+    (data.projectKey !== undefined ? !data.projectKey : !task.projectKey)
+  ) {
+    res.status(400).json({ error: 'projectKey required when gitEnabled' });
+    return;
+  }
   if (archived !== undefined) {
     if (typeof archived !== 'boolean') {
       res.status(400).json({ error: 'bad archived' });
@@ -379,6 +518,15 @@ boardRouter.patch('/tasks/:id', async (req, res) => {
     changed.push(FIELD_LABELS.tags);
   if (data.archived !== undefined && data.archived !== task.archived)
     changed.push(FIELD_LABELS.archived);
+  if (data.projectKey !== undefined && data.projectKey !== task.projectKey)
+    changed.push(FIELD_LABELS.projectKey);
+  if (data.agentState !== undefined && data.agentState !== task.agentState)
+    changed.push(FIELD_LABELS.agentState);
+  if (data.gitEnabled !== undefined && data.gitEnabled !== task.gitEnabled)
+    changed.push(FIELD_LABELS.gitEnabled);
+  if (data.branch !== undefined && data.branch !== task.branch) changed.push(FIELD_LABELS.branch);
+  if (data.lastCommit !== undefined && data.lastCommit !== task.lastCommit)
+    changed.push(FIELD_LABELS.lastCommit);
 
   const titles = await columnTitles(userId);
   if (data.columnId) {
@@ -402,6 +550,40 @@ boardRouter.patch('/tasks/:id', async (req, res) => {
       taskTitle: data.title ?? task.title,
       type: data.archived === true ? 'archived' : data.archived === false ? 'unarchived' : 'updated',
       summary: `Updated ${changed.join(', ')}`,
+    });
+  }
+  if (data.agentState !== undefined && data.agentState !== task.agentState) {
+    const type =
+      data.agentState === 'running'
+        ? 'agent-started'
+        : data.agentState === 'under-review'
+          ? 'agent-review'
+          : data.agentState === 'completed'
+            ? 'agent-completed'
+            : 'updated';
+    await record({
+      userId,
+      taskId: task.id,
+      taskTitle: data.title ?? task.title,
+      type,
+      summary:
+        data.agentState === 'running'
+          ? 'Agent started work'
+          : data.agentState === 'under-review'
+            ? 'Agent requested review'
+            : data.agentState === 'completed'
+              ? 'Marked completed after review'
+              : `Agent state → ${data.agentState}`,
+    });
+  }
+  if (data.lastCommit !== undefined && data.lastCommit && data.lastCommit !== task.lastCommit) {
+    await record({
+      userId,
+      taskId: task.id,
+      taskTitle: data.title ?? task.title,
+      type: 'git-commit',
+      summary: `Committed ${(data.lastCommit as string).slice(0, 7)}${data.branch ? ` on ${data.branch}` : ''}`,
+      detail: data.lastCommit as string,
     });
   }
   res.json({ board: await getBoardState(userId) });
@@ -486,6 +668,11 @@ interface ParsedBoard {
     dueDate: string | null;
     tags: string[];
     archived: boolean;
+    projectKey: string;
+    agentState: 'idle' | 'running' | 'under-review' | 'completed';
+    gitEnabled: boolean;
+    branch: string | null;
+    lastCommit: string | null;
   }[];
 }
 
@@ -525,6 +712,11 @@ boardRouter.post('/replace', async (req, res) => {
           tags: t.tags,
           archived: t.archived,
           position: pos,
+          projectKey: t.projectKey,
+          agentState: t.agentState,
+          gitEnabled: t.gitEnabled,
+          branch: t.branch,
+          lastCommit: t.lastCommit,
         },
       });
     }
@@ -630,6 +822,15 @@ function parseBoardPayload(board: unknown): ParsedBoard | null {
       dueDate: due,
       tags: cleanTags(r.tags),
       archived: r.archived === true,
+      projectKey: cleanProjectKey(r.projectKey ?? '') ?? '',
+      agentState: validAgentState(r.agentState) ? r.agentState : 'idle',
+      gitEnabled: r.gitEnabled === true,
+      branch:
+        typeof r.branch === 'string' && validBranch(r.branch) ? r.branch.slice(0, 128) : null,
+      lastCommit:
+        typeof r.lastCommit === 'string' && validCommit(r.lastCommit)
+          ? r.lastCommit.slice(0, 40)
+          : null,
     });
   }
   return { columns: cleanCols, tasks: cleanTasks };

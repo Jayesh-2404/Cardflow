@@ -1,4 +1,4 @@
-import type { BoardState, Priority } from '../types';
+import type { AgentState, BoardState, Priority } from '../types';
 
 export const API_BASE = (
   (import.meta.env.VITE_API_URL as string | undefined) || 'http://localhost:4000'
@@ -25,6 +25,11 @@ interface ServerBoard {
     dueDate: string | null;
     tags: string[];
     archived: boolean;
+    projectKey: string;
+    agentState: string;
+    gitEnabled: boolean;
+    branch: string | null;
+    lastCommit: string | null;
     createdAt: string;
     updatedAt: string;
   }[];
@@ -45,7 +50,11 @@ export type EventType =
   | 'archived'
   | 'unarchived'
   | 'note'
-  | 'deleted';
+  | 'deleted'
+  | 'agent-started'
+  | 'agent-review'
+  | 'agent-completed'
+  | 'git-commit';
 
 export interface JournalEvent {
   id: string;
@@ -60,6 +69,7 @@ export interface JournalEvent {
 }
 
 const PRIORITIES: Priority[] = ['low', 'medium', 'high'];
+const AGENT_STATES: AgentState[] = ['idle', 'running', 'under-review', 'completed'];
 
 const toMillis = (iso: string | undefined): number => {
   const n = iso ? Date.parse(iso) : NaN;
@@ -78,6 +88,13 @@ export function fromServer(b: ServerBoard): BoardState {
       dueDate: t.dueDate,
       tags: t.tags,
       archived: t.archived,
+      projectKey: typeof t.projectKey === 'string' ? t.projectKey : '',
+      agentState: (AGENT_STATES.includes(t.agentState as AgentState)
+        ? t.agentState
+        : 'idle') as AgentState,
+      gitEnabled: t.gitEnabled === true,
+      branch: typeof t.branch === 'string' ? t.branch : null,
+      lastCommit: typeof t.lastCommit === 'string' ? t.lastCommit : null,
       createdAt: toMillis(t.createdAt),
       updatedAt: toMillis(t.updatedAt),
     })),
@@ -169,6 +186,8 @@ export const api = {
     priority: Priority;
     dueDate: string;
     tags: string[];
+    projectKey?: string;
+    gitEnabled?: boolean;
   }): Promise<BoardState> {
     return fromServer((await req<BoardResponse>('/api/board/tasks', body(input))).board);
   },
@@ -182,6 +201,11 @@ export const api = {
       tags: string[];
       archived: boolean;
       columnId: string;
+      projectKey: string;
+      agentState: AgentState;
+      gitEnabled: boolean;
+      branch: string | null;
+      lastCommit: string | null;
     }>,
   ): Promise<BoardState> {
     return fromServer(

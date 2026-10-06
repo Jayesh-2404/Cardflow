@@ -1,5 +1,9 @@
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PRIORITIES = new Set(['low', 'medium', 'high']);
+const AGENT_STATES = new Set(['idle', 'running', 'under-review', 'completed']);
+const PROJECT_KEY_RE = /^[a-z0-9][a-z0-9-_]{0,63}$/;
+const BRANCH_RE = /^[A-Za-z0-9/_.-]{1,128}$/;
+const COMMIT_RE = /^[0-9a-f]{7,40}$/i;
 
 export function validEmail(v: unknown): v is string {
   return typeof v === 'string' && EMAIL_RE.test(v.trim()) && v.length <= 254;
@@ -11,6 +15,30 @@ export function validPassword(v: unknown): v is string {
 
 export function validPriority(v: unknown): v is 'low' | 'medium' | 'high' {
   return typeof v === 'string' && PRIORITIES.has(v);
+}
+
+export function validAgentState(
+  v: unknown,
+): v is 'idle' | 'running' | 'under-review' | 'completed' {
+  return typeof v === 'string' && AGENT_STATES.has(v);
+}
+
+export function cleanProjectKey(v: unknown): string | null {
+  if (v === undefined || v === null || v === '') return '';
+  if (typeof v !== 'string') return null;
+  const s = v.trim().toLowerCase();
+  return PROJECT_KEY_RE.test(s) ? s : null;
+}
+
+export function validBranch(v: unknown): v is string {
+  if (typeof v !== 'string') return false;
+  if (!BRANCH_RE.test(v)) return false;
+  if (v.includes('..') || v.includes('@{') || v.includes('//') || v.endsWith('.lock')) return false;
+  return true;
+}
+
+export function validCommit(v: unknown): v is string {
+  return typeof v === 'string' && COMMIT_RE.test(v);
 }
 
 export function cleanTags(v: unknown): string[] {

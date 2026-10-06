@@ -11,6 +11,10 @@ const EVENT_ICON: Record<EventType, IconName> = {
   unarchived: 'undo',
   note: 'note',
   deleted: 'trash',
+  'agent-started': 'activity',
+  'agent-review': 'search',
+  'agent-completed': 'check',
+  'git-commit': 'hash',
 };
 
 type Filter = 'all' | 'note' | 'moved' | 'updated';

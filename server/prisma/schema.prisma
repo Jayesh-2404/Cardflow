@@ -43,10 +43,16 @@ model Task {
   tags        String[]
   archived    Boolean   @default(false)
   position    Int       @default(0)
+  projectKey  String    @default("")
+  agentState  String    @default("idle")
+  gitEnabled  Boolean   @default(false)
+  branch      String?
+  lastCommit  String?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
   @@index([userId, columnId, position])
+  @@index([userId, dueDate])
 }
 
 /*

@@ -1,6 +1,6 @@
 import { useRef, useState, type ReactNode } from 'react';
 import Icon, { type IconName } from './Icon';
-import type { FilterState, Priority } from '../types';
+import type { AgentState, FilterState, Priority } from '../types';
 
 export type PanelName = 'filters' | 'archive' | 'settings' | 'journal';
 
@@ -28,6 +28,7 @@ interface Props {
 }
 
 const PRIORITIES: Priority[] = ['low', 'medium', 'high'];
+const AGENT_FILTERS: AgentState[] = ['running', 'under-review'];
 
 const PANEL_TITLE: Record<PanelName, string> = {
   filters: 'Filters',
@@ -44,6 +45,14 @@ export default function Sidebar(props: Props) {
     props.onFiltersChange({
       ...filters,
       priorities: has ? filters.priorities.filter((x) => x !== p) : [...filters.priorities, p],
+    });
+  }
+
+  function toggleAgent(a: AgentState) {
+    const has = filters.agent.includes(a);
+    props.onFiltersChange({
+      ...filters,
+      agent: has ? filters.agent.filter((x) => x !== a) : [...filters.agent, a],
     });
   }
 
@@ -153,6 +162,27 @@ export default function Sidebar(props: Props) {
                           }`}
                         >
                           {p}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <p className="mb-1.5 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-kb-faint">
+                      Agent
+                    </p>
+                    <div className="flex gap-1.5">
+                      {AGENT_FILTERS.map((a) => (
+                        <button
+                          key={a}
+                          onClick={() => toggleAgent(a)}
+                          data-testid={`filter-agent-${a}`}
+                          className={`rounded-full border px-2.5 py-0.5 text-[11.5px] capitalize transition-colors duration-100 ${
+                            filters.agent.includes(a)
+                              ? 'kb-accent-bg border-transparent'
+                              : 'kb-border text-kb-muted hover:border-[var(--kb-border-strong)]'
+                          }`}
+                        >
+                          {a === 'under-review' ? 'Review' : 'Running'}
                         </button>
                       ))}
                     </div>

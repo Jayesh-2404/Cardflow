@@ -16,6 +16,11 @@ export interface BoardTaskDTO {
   dueDate: string | null;
   tags: string[];
   archived: boolean;
+  projectKey: string;
+  agentState: 'idle' | 'running' | 'under-review' | 'completed';
+  gitEnabled: boolean;
+  branch: string | null;
+  lastCommit: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -26,6 +31,7 @@ export interface BoardDTO {
 }
 
 const PRIORITIES = new Set(['low', 'medium', 'high']);
+const AGENT_STATES = new Set(['idle', 'running', 'under-review', 'completed']);
 
 export async function getBoardState(userId: string): Promise<BoardDTO> {
   const [columns, tasks] = await Promise.all([
@@ -43,6 +49,13 @@ export async function getBoardState(userId: string): Promise<BoardDTO> {
       dueDate: toDateString(t.dueDate),
       tags: t.tags,
       archived: t.archived,
+      projectKey: t.projectKey ?? '',
+      agentState: (
+        AGENT_STATES.has(t.agentState) ? t.agentState : 'idle'
+      ) as BoardTaskDTO['agentState'],
+      gitEnabled: t.gitEnabled ?? false,
+      branch: t.branch ?? null,
+      lastCommit: t.lastCommit ?? null,
       createdAt: t.createdAt.toISOString(),
       updatedAt: t.updatedAt.toISOString(),
     })),

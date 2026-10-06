@@ -11,6 +11,10 @@ const EVENT_ICON: Record<EventType, IconName> = {
   unarchived: 'undo',
   note: 'note',
   deleted: 'trash',
+  'agent-started': 'activity',
+  'agent-review': 'search',
+  'agent-completed': 'check',
+  'git-commit': 'hash',
 };
 
 const EVENT_TONE: Record<EventType, string> = {
@@ -21,6 +25,10 @@ const EVENT_TONE: Record<EventType, string> = {
   unarchived: 'var(--kb-muted)',
   note: 'var(--kb-accent)',
   deleted: 'var(--kb-danger)',
+  'agent-started': 'var(--kb-warn)',
+  'agent-review': 'var(--kb-accent)',
+  'agent-completed': 'var(--kb-ok)',
+  'git-commit': 'var(--kb-muted)',
 };
 
 /** Newest first is the server order; the timeline reads oldest → newest. */

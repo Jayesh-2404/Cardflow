@@ -12,6 +12,8 @@ export interface EditorDraft {
   dueDate: string;
   tags: string;
   columnId: string;
+  projectKey: string;
+  gitEnabled: boolean;
 }
 
 interface Props {
@@ -35,11 +37,22 @@ export function draftFromTask(t: Task): EditorDraft {
     dueDate: t.dueDate ?? '',
     tags: t.tags.join(', '),
     columnId: t.columnId,
+    projectKey: t.projectKey ?? '',
+    gitEnabled: t.gitEnabled ?? false,
   };
 }
 
 export function emptyDraft(columnId: string): EditorDraft {
-  return { title: '', description: '', priority: 'medium', dueDate: '', tags: '', columnId };
+  return {
+    title: '',
+    description: '',
+    priority: 'medium',
+    dueDate: '',
+    tags: '',
+    columnId,
+    projectKey: '',
+    gitEnabled: false,
+  };
 }
 
 function Field({ label, children }: { label: string; children: ReactNode }) {
@@ -93,6 +106,8 @@ export default function TaskEditor(props: Props) {
             {props.task && (
               <p className="font-mono-kb truncate text-[10.5px] text-kb-faint">
                 created {absTime(new Date(props.task.createdAt).toISOString())}
+                {props.task.agentState !== 'idle' && ` · ${props.task.agentState}`}
+                {props.task.branch && ` · ${props.task.branch}`}
               </p>
             )}
           </div>
@@ -200,6 +215,37 @@ export default function TaskEditor(props: Props) {
               ))}
             </select>
           </Field>
+
+          <div className="mt-3.5 grid grid-cols-2 gap-2.5">
+            <div>
+              <label className="mb-1 block text-[10.5px] font-semibold uppercase tracking-[0.08em] text-kb-faint">
+                Project
+              </label>
+              <input
+                value={draft.projectKey}
+                onChange={(e) => set('projectKey', e.target.value.toLowerCase())}
+                placeholder="zex"
+                aria-label="Project key"
+                data-testid="editor-project"
+                className="kb-input font-mono-kb"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-[10.5px] font-semibold uppercase tracking-[0.08em] text-kb-faint">
+                Git
+              </label>
+              <label className="kb-input flex h-[34px] cursor-pointer items-center justify-between gap-2 text-[12.5px]">
+                <span className="text-kb-muted">Isolate in branch</span>
+                <input
+                  type="checkbox"
+                  checked={draft.gitEnabled}
+                  onChange={(e) => set('gitEnabled', e.target.checked)}
+                  aria-label="Isolate in git branch"
+                  data-testid="editor-git"
+                />
+              </label>
+            </div>
+          </div>
 
           <div className="mt-5 flex gap-2">
             <button

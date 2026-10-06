@@ -107,6 +107,28 @@ export default function TaskCard({ task, entryCount, onOpen }: Props) {
             {entryCount}
           </span>
         )}
+        {task.agentState !== 'idle' && (
+          <span
+            title={task.branch ? `Agent: ${task.agentState} on ${task.branch}` : `Agent: ${task.agentState}`}
+            data-testid="agent-badge"
+            className="kb-chip font-mono-kb inline-flex items-center gap-1 text-[10px] leading-none"
+          >
+            <span
+              aria-hidden
+              className="h-1.5 w-1.5 rounded-full"
+              style={{
+                background:
+                  task.agentState === 'running'
+                    ? 'var(--kb-warn)'
+                    : task.agentState === 'under-review'
+                      ? 'var(--kb-accent)'
+                      : 'var(--kb-ok)',
+              }}
+            />
+            {task.agentState === 'under-review' ? 'Review' : task.agentState === 'running' ? 'Running' : 'Done'}
+            {task.projectKey && <span className="opacity-70">{task.projectKey}</span>}
+          </span>
+        )}
       </div>
     </div>
   );

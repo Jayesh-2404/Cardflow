@@ -12,6 +12,10 @@ export const EVENT_TYPES = [
   'unarchived',
   'note',
   'deleted',
+  'agent-started',
+  'agent-review',
+  'agent-completed',
+  'git-commit',
 ] as const;
 
 export type EventType = (typeof EVENT_TYPES)[number];
@@ -136,4 +140,9 @@ export const FIELD_LABELS: Record<string, string> = {
   tags: 'tags',
   archived: 'archive state',
   columnId: 'list',
+  projectKey: 'project',
+  agentState: 'agent state',
+  gitEnabled: 'git isolation',
+  branch: 'branch',
+  lastCommit: 'commit',
 };

@@ -31,6 +31,7 @@ import './index.css';
 function matchesFilters(t: Task, f: FilterState): boolean {
   if (t.archived && !f.showArchived) return false;
   if (f.priorities.length > 0 && !f.priorities.includes(t.priority)) return false;
+  if (f.agent.length > 0 && !f.agent.includes(t.agentState)) return false;
   if (f.tag && !t.tags.includes(f.tag)) return false;
   if (f.overdueOnly) {
     if (!t.dueDate) return false;
@@ -232,6 +233,7 @@ export default function App() {
 
   const activeFilterCount =
     filters.priorities.length +
+    filters.agent.length +
     (filters.tag ? 1 : 0) +
     (filters.overdueOnly ? 1 : 0) +
     (filters.showArchived ? 1 : 0);
@@ -340,6 +342,7 @@ export default function App() {
   function handleSave(draft: EditorDraft, taskId: string | null) {
     const title = draft.title.trim();
     if (!title || !board) return;
+    const projectKey = draft.projectKey.trim().toLowerCase();
     if (taskId) {
       const current = board.tasks.find((t) => t.id === taskId);
       if (!current) return;
@@ -351,6 +354,8 @@ export default function App() {
         dueDate: draft.dueDate || null,
         tags: parseTags(draft.tags),
         columnId: draft.columnId,
+        projectKey,
+        gitEnabled: draft.gitEnabled,
       };
       const optimistic: BoardState = {
         ...board,
@@ -364,6 +369,8 @@ export default function App() {
           dueDate: next.dueDate,
           tags: next.tags,
           columnId: next.columnId,
+          projectKey: next.projectKey,
+          gitEnabled: next.gitEnabled,
         }),
         optimistic,
       );
@@ -376,6 +383,8 @@ export default function App() {
           priority: draft.priority,
           dueDate: draft.dueDate,
           tags: parseTags(draft.tags),
+          projectKey,
+          gitEnabled: draft.gitEnabled,
         }),
       );
     }
