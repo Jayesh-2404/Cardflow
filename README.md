@@ -77,12 +77,67 @@ archived/unarchived, deleted, plus free-form notes you write yourself.
 
 **Interface**
 
-- Design tokens in `src/index.css`: tight radii, defined 1px borders, restrained shadows,
+- Design tokens in `src/index.css`: 6/8/12px radii, defined 1px borders, restrained shadows,
   one focus-visible outline, tabular numerals, `prefers-reduced-motion` guard
 - 30 hand-drawn single-stroke SVG icons (`src/components/Icon.tsx`) — no emoji, so glyphs
   render identically on every platform
 - Light and dark themes with `color-scheme` set per theme, so native widgets (select popup,
   date picker, scrollbars) match
+
+## Journal retention (DB growth)
+
+`TaskEvent` is append-only by design, so the board adds a delete path rather than
+letting it grow forever:
+
+- Per entry: hover any timeline row or journal feed row → trash icon
+  (`DELETE /api/board/journal/:id`).
+- Per task: open a card → Journal header → `Clear` removes that card's history
+  (`DELETE /api/board/journal?taskId=...`).
+- Bulk prune: Journal panel → pick a date → `Delete older` removes everything
+  strictly before that day (`DELETE /api/board/journal?before=yyyy-mm-dd`).
+- Tasks are never touched by these endpoints — only journal rows.
+
+Opinion: keep auto-created `created/moved/updated` entries (they are small and make
+the timeline truthful), prune `note`-heavy or old history per task/date when the
+table gets large. Indexes on `(userId, createdAt)` and `(taskId, createdAt)` keep
+both the feed and per-task timeline fast.
+
+## MCP (applied AI)
+
+`server/src/mcp.ts` is a stdio MCP server so an agent (OpenCode) can work the
+board directly. Wired in `opencode.jsonc` (`kanban` server, runs from the board
+root, auth from `server/.env` via `KANBAN_USER_ID` or `KANBAN_TOKEN`).
+
+Tools: `list_today`, `list_by_date`, `get_task`, `update_status`, `add_note`,
+`delete_note`, `prune_journal`. Writes go through the same journal + validators
+(`validBranch`/`validCommit`) as the REST API, so agent moves show up in the
+timeline. Project paths resolve via `server/project-roots.json`
+(copy from `project-roots.example.json`, gitignored).
+
+Rules the agent is held to (all in `server/src/mcp-filters.ts`, unit-tested):
+
+- **An agent never marks a card Done.** `update_status` only accepts `Todo`/`Doing`.
+  `Done` is absent from the tool schema on purpose — if the model tries it anyway the
+  error tells it to use `agentState: "under-review"` and let a human close the card.
+  The REST API is unrestricted, so you can still close cards yourself.
+- **`list_today` and `list_by_date` skip Done cards**, so finished work does not read
+  as open. `list_by_date` takes `includeDone: true` to see them anyway.
+- **"Today" is local, not UTC.** Resolved via `Intl` in `KANBAN_TZ` (default
+  `Asia/Kolkata`), because between 00:00 and 05:30 IST the UTC date is yesterday and
+  deploys run in UTC anyway.
+
+`opencode.jsonc` wires the server up and holds the agent's `permission` block
+(`permission`, singular, keyed by tool name — and `bash`, not `shell`). Note the global
+config at `~/.config/opencode/opencode.jsonc` currently overrides the `kanban` command
+there to run the **compiled** `server/dist/mcp.js`, so source changes need
+`cd server && npx tsc` (a plain `npm run build` fails while the MCP is running — Prisma's
+engine DLL is locked).
+
+## Diagrams
+
+- `docs/kanban-architecture.excalidraw` (+ `.png`) — full REST app: web, API, DB.
+- `docs/kanban-mcp.excalidraw` (+ `.png`) — MCP agent path: 7 tools, same journal.
+- Regenerate: `python docs/gen_diagrams.py`. Both files open directly in excalidraw.com (Menu → Open).
 
 ## Auth design
 
@@ -96,6 +151,14 @@ archived/unarchived, deleted, plus free-form notes you write yourself.
 - Change password rotates everything (other sessions die, re-login required).
 
 ## Tests
+
+Server rules are pure functions, so they unit-test without a database:
+
+```bash
+cd server
+npm test                # node:test via tsx — MCP list/move rules
+npm run typecheck       # src + the test suite
+```
 
 E2E runs against a real API and a real Postgres journal, so persistence is genuinely
 asserted. Registration locks after the first account, so the suite's user is provisioned
@@ -118,7 +181,9 @@ Override the account with `E2E_EMAIL` / `E2E_PASSWORD`, and the endpoints with
 
 Server (`server/.env`, gitignored — never commit):
 `DATABASE_URL` (Neon pooled), `DIRECT_URL` (Neon direct, migrations only),
-`JWT_SECRET` (32+ chars, `openssl rand -base64 32`), `FRONTEND_ORIGIN`, `PORT`.
+`JWT_SECRET` (32+ chars, `openssl rand -base64 32`), `FRONTEND_ORIGIN`, `PORT`,
+plus MCP-only `KANBAN_USER_ID`/`KANBAN_TOKEN` and `KANBAN_TZ` (default
+`Asia/Kolkata`).
 
 Frontend build-time: `VITE_API_URL` (default `http://localhost:4000`).
 
