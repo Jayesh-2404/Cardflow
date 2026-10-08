@@ -1,0 +1,10 @@
+{
+  // Typechecks the test suite, which tsconfig.json excludes so it never lands in
+  // dist/. Run via `npm run typecheck`.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "include": ["src"],
+  "exclude": []
+}
