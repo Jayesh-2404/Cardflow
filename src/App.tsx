@@ -22,6 +22,7 @@ import Login from './components/Login';
 import Icon from './components/Icon';
 import { ApiError, api, API_BASE, fromServer, type JournalEvent } from './lib/api';
 import { DEFAULT_FILTERS, type BoardState, type FilterState, type Task } from './types';
+import { todayISO } from './lib/format';
 import '@fontsource/inter/400.css';
 import '@fontsource/inter/500.css';
 import '@fontsource/inter/600.css';
@@ -35,8 +36,7 @@ function matchesFilters(t: Task, f: FilterState): boolean {
   if (f.tag && !t.tags.includes(f.tag)) return false;
   if (f.overdueOnly) {
     if (!t.dueDate) return false;
-    const today = new Date().toISOString().slice(0, 10);
-    if (!(t.dueDate < today)) return false;
+    if (!(t.dueDate < todayISO())) return false;
   }
   if (f.query.trim()) {
     const q = f.query.trim().toLowerCase();
@@ -98,6 +98,7 @@ export default function App() {
     { counts: {}, events: [] },
   );
   const [notesBusy, setNotesBusy] = useState(false);
+  const [pruneBusy, setPruneBusy] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [columnHint, setColumnHint] = useState<{ id: string } & ColumnDropHint | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
@@ -271,6 +272,48 @@ export default function App() {
       window.alert(err instanceof ApiError ? err.message : 'Could not log that entry.');
     } finally {
       setNotesBusy(false);
+    }
+  }
+
+  async function handleDeleteEntry(id: string) {
+    const target = journal.events.find((e) => e.id === id);
+    if (!target) return;
+    if (!window.confirm('Delete this journal entry? The task stays.')) return;
+    try {
+      await api.deleteJournalEvent(id);
+      setJournal((j) => {
+        const events = j.events.filter((e) => e.id !== id);
+        const counts = { ...j.counts };
+        const left = events.filter((e) => e.taskId === target.taskId).length;
+        if (left === 0) delete counts[target.taskId];
+        else counts[target.taskId] = left;
+        return { counts, events };
+      });
+    } catch (err) {
+      window.alert(err instanceof ApiError ? err.message : 'Could not delete that entry.');
+    }
+  }
+
+  async function handlePrune(before: string) {
+    if (!window.confirm(`Delete all journal entries older than ${before}? Tasks stay.`)) return;
+    setPruneBusy(true);
+    try {
+      await api.pruneJournal({ before });
+      await refreshJournal();
+    } catch (err) {
+      window.alert(err instanceof ApiError ? err.message : 'Could not prune journal.');
+    } finally {
+      setPruneBusy(false);
+    }
+  }
+
+  async function handleClearTask(taskId: string) {
+    if (!window.confirm('Delete all journal entries for this task? The task stays.')) return;
+    try {
+      await api.pruneJournal({ taskId });
+      await refreshJournal();
+    } catch (err) {
+      window.alert(err instanceof ApiError ? err.message : 'Could not clear task history.');
     }
   }
 
@@ -464,21 +507,23 @@ export default function App() {
     const overTask = board.tasks.find((t) => t.id === overId);
     const overColumn = bodyMatch ? bodyMatch.id : (overTask?.columnId ?? moving.columnId);
 
-    const rest = board.tasks.filter((t) => t.id !== activeId);
-    let insertAt: number;
+    const updated: Task = { ...moving, columnId: overColumn };
+    let next: Task[];
+
     if (bodyMatch || !overTask) {
       // No specific card hovered: append to the end of the target list.
+      const rest = board.tasks.filter((t) => t.id !== activeId);
       let seen = -1;
       for (let i = 0; i < rest.length; i++) {
         if (rest[i].columnId === overColumn) seen = i;
       }
-      insertAt = seen + 1;
+      next = [...rest.slice(0, seen + 1), updated, ...rest.slice(seen + 1)];
     } else {
-      const overIdx = rest.findIndex((t) => t.id === overId);
-      insertAt = overIdx < 0 ? rest.length : overIdx;
+      const overIdx = board.tasks.findIndex((t) => t.id === overId);
+      next = [...board.tasks];
+      next[fromIdx] = updated;
+      next = arrayMove(next, fromIdx, overIdx);
     }
-    const updated: Task = { ...moving, columnId: overColumn };
-    const next = [...rest.slice(0, insertAt), updated, ...rest.slice(insertAt)];
     const pos = next.filter((t) => t.columnId === overColumn).findIndex((t) => t.id === activeId);
     void commit(api.moveTask(activeId, overColumn, pos), { ...board, tasks: next });
   }
@@ -663,6 +708,9 @@ export default function App() {
             events={journal.events}
             onOpenTask={openFromJournal}
             onRefresh={() => void refreshJournal()}
+            onDelete={(id) => void handleDeleteEntry(id)}
+            onPrune={(before) => void handlePrune(before)}
+            pruneBusy={pruneBusy}
           />
         }
         archiveList={
@@ -825,6 +873,8 @@ export default function App() {
             setEditing(null);
           }}
           onAddNote={handleAddNote}
+          onDeleteEntry={(id) => void handleDeleteEntry(id)}
+          onClearTask={editing ? () => void handleClearTask(editing.id) : undefined}
         />
       )}
 

@@ -72,7 +72,7 @@ export default function BoardColumn(props: Props) {
       aria-label={column.title}
       data-testid="board-column"
       data-column-id={column.id}
-      className={`relative flex max-h-full min-h-0 shrink-0 flex-col overflow-hidden rounded-[10px] border transition-[border-color,box-shadow] duration-100 ${
+      className={`relative flex max-h-full min-h-0 shrink-0 flex-col overflow-hidden rounded-[12px] border bg-[color-mix(in_srgb,var(--kb-card)_55%,var(--kb-bg))] transition-[border-color,box-shadow] duration-150 ${
         props.wide ? 'w-full' : 'w-[19rem]'
       } ${
         columnDragging

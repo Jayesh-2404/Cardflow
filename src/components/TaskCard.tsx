@@ -41,7 +41,7 @@ export default function TaskCard({ task, entryCount, onOpen }: Props) {
       onClick={() => onOpen(task)}
       data-testid="task-card"
       data-task-id={task.id}
-      className={`group relative cursor-grab overflow-hidden rounded-[7px] border bg-[var(--kb-card)] pl-2.5 pr-2.5 py-2 transition-[border-color,box-shadow,opacity] duration-100 active:cursor-grabbing ${
+      className={`group relative cursor-grab overflow-hidden rounded-[8px] border bg-[var(--kb-card)] pl-2.5 pr-2.5 py-2 transition-[border-color,box-shadow,transform,opacity] duration-150 active:cursor-grabbing ${
         isDragging
           ? 'border-[var(--kb-accent)] opacity-70'
           : 'kb-border hover:border-[var(--kb-border-strong)] hover:shadow-[var(--kb-shadow-md)]'

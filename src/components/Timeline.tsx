@@ -53,11 +53,11 @@ export function groupByDay(events: JournalEvent[]): DayGroup[] {
   return out;
 }
 
-export function TimelineRow({ event }: { event: JournalEvent }) {
+export function TimelineRow({ event, onDelete }: { event: JournalEvent; onDelete?: (id: string) => void }) {
   const isNote = event.type === 'note';
   return (
     <li
-      className="relative flex gap-2.5 pb-3 pl-5 last:pb-0"
+      className="group/row relative flex gap-2.5 pb-3 pl-5 last:pb-0"
       data-testid="timeline-row"
       data-type={event.type}
     >
@@ -85,6 +85,17 @@ export function TimelineRow({ event }: { event: JournalEvent }) {
           {relTime(event.createdAt)}
         </time>
       </div>
+      {onDelete && (
+        <button
+          onClick={() => onDelete(event.id)}
+          title="Delete this entry"
+          aria-label="Delete journal entry"
+          data-testid="timeline-delete"
+          className="grid h-5 w-5 shrink-0 place-items-center rounded-[4px] text-kb-faint opacity-0 transition-opacity duration-100 hover:bg-[var(--kb-danger-soft)] hover:text-kb-danger focus-visible:opacity-100 group-hover/row:opacity-100"
+        >
+          <Icon name="trash" size={11} />
+        </button>
+      )}
     </li>
   );
 }
@@ -93,9 +104,11 @@ export function TimelineRow({ event }: { event: JournalEvent }) {
 export function Timeline({
   events,
   emptyLabel,
+  onDelete,
 }: {
   events: JournalEvent[];
   emptyLabel: string;
+  onDelete?: (id: string) => void;
 }) {
   const groups = useMemo(() => groupByDay(chronological(events)), [events]);
 
@@ -118,7 +131,7 @@ export function Timeline({
           </p>
           <ol>
             {g.items.map((e) => (
-              <TimelineRow key={e.id} event={e} />
+              <TimelineRow key={e.id} event={e} onDelete={onDelete} />
             ))}
           </ol>
         </li>

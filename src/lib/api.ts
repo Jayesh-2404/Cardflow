@@ -4,8 +4,6 @@ export const API_BASE = (
   (import.meta.env.VITE_API_URL as string | undefined) || 'http://localhost:4000'
 ).replace(/\/$/, '');
 
-const BASE = API_BASE;
-
 export class ApiError extends Error {
   status: number;
   constructor(status: number, message: string) {
@@ -102,7 +100,7 @@ export function fromServer(b: ServerBoard): BoardState {
 }
 
 async function raw(path: string, init?: RequestInit): Promise<Response> {
-  return fetch(`${BASE}${path}`, {
+  return fetch(`${API_BASE}${path}`, {
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     ...init,
@@ -245,5 +243,18 @@ export const api = {
   async addNote(taskId: string, note: string): Promise<JournalEvent> {
     return (await req<{ event: JournalEvent }>(`/api/board/tasks/${taskId}/notes`, body({ note })))
       .event;
+  },
+  async deleteJournalEvent(id: string): Promise<void> {
+    await req<{ ok: boolean }>(`/api/board/journal/${id}`, { method: 'DELETE' });
+  },
+  async pruneJournal(filter: { before?: string; taskId?: string; type?: string }): Promise<number> {
+    const q = new URLSearchParams();
+    if (filter.before) q.set('before', filter.before);
+    if (filter.taskId) q.set('taskId', filter.taskId);
+    if (filter.type) q.set('type', filter.type);
+    const res = await req<{ deleted: number }>(`/api/board/journal?${q.toString()}`, {
+      method: 'DELETE',
+    });
+    return res.deleted;
   },
 };

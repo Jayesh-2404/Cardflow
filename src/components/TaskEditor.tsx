@@ -28,6 +28,8 @@ interface Props {
   onDelete: (taskId: string) => void;
   onArchive: (taskId: string, archived: boolean) => void;
   onAddNote: (taskId: string, note: string) => void;
+  onDeleteEntry?: (entryId: string) => void;
+  onClearTask?: () => void;
 }
 
 export function draftFromTask(t: Task): EditorDraft {
@@ -308,8 +310,20 @@ export default function TaskEditor(props: Props) {
                   <Icon name="journal" size={12} />
                   Journal
                 </h3>
-                <span className="font-mono-kb text-[10.5px] text-kb-faint">
-                  {props.events.length} {props.events.length === 1 ? 'entry' : 'entries'}
+                <span className="flex items-center gap-2">
+                  <span className="font-mono-kb text-[10.5px] text-kb-faint">
+                    {props.events.length} {props.events.length === 1 ? 'entry' : 'entries'}
+                  </span>
+                  {props.onClearTask && props.events.length > 0 && (
+                    <button
+                      onClick={props.onClearTask}
+                      data-testid="editor-clear-history"
+                      title="Delete all entries for this task"
+                      className="text-[10.5px] text-kb-faint underline-offset-2 hover:text-kb-danger hover:underline"
+                    >
+                      Clear
+                    </button>
+                  )}
                 </span>
               </div>
 
@@ -322,6 +336,7 @@ export default function TaskEditor(props: Props) {
                 <Timeline
                   events={props.events}
                   emptyLabel="No entries yet — log the first one above."
+                  onDelete={props.onDeleteEntry}
                 />
               </div>
             </section>

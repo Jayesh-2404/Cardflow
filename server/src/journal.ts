@@ -131,6 +131,31 @@ export async function countsFor(userId: string): Promise<Record<string, number>>
   return out;
 }
 
+/** Delete one entry. Returns true if owned + deleted. */
+export async function deleteOne(userId: string, id: string): Promise<boolean> {
+  const r = await prisma.taskEvent.deleteMany({ where: { id, userId } });
+  return r.count > 0;
+}
+
+export interface PruneFilter {
+  before?: Date;
+  taskId?: string;
+  type?: EventType;
+}
+
+/** Bulk delete journal entries. At least one filter required to avoid full wipe. */
+export async function prune(userId: string, filter: PruneFilter): Promise<number> {
+  if (!filter.before && !filter.taskId && !filter.type) return 0;
+  const where: { userId: string; createdAt?: { lt: Date }; taskId?: string; type?: string } = {
+    userId,
+  };
+  if (filter.before) where.createdAt = { lt: filter.before };
+  if (filter.taskId) where.taskId = filter.taskId;
+  if (filter.type) where.type = filter.type;
+  const r = await prisma.taskEvent.deleteMany({ where });
+  return r.count;
+}
+
 /** Human label for a changed field, used in `updated` summaries. */
 export const FIELD_LABELS: Record<string, string> = {
   title: 'title',

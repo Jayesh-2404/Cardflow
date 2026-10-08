@@ -12,7 +12,16 @@ import {
   validPriority,
 } from '../validate';
 import { getBoardState, seedDefaults } from '../board';
-import { countsFor, FIELD_LABELS, isEventType, recent, record, timelineFor } from '../journal';
+import {
+  countsFor,
+  deleteOne,
+  FIELD_LABELS,
+  isEventType,
+  prune,
+  recent,
+  record,
+  timelineFor,
+} from '../journal';
 
 export const boardRouter = Router();
 boardRouter.use(requireAuth);
@@ -97,6 +106,51 @@ boardRouter.get('/journal', async (req, res) => {
     recent(userId, Number.isFinite(limit) ? limit : 120),
   ]);
   res.json({ counts, events });
+});
+
+/**
+ * Bulk prune journal entries to bound DB growth.
+ * At least one filter required: ?before=yyyy-mm-dd&taskId=..&type=note
+ * `before` deletes entries strictly older than that day (UTC).
+ */
+boardRouter.delete('/journal', async (req, res) => {
+  const userId = uid(req);
+  const q = req.query as { before?: unknown; taskId?: unknown; type?: unknown };
+  let before: Date | null = null;
+  if (q.before !== undefined) {
+    if (typeof q.before !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(q.before)) {
+      res.status(400).json({ error: 'bad before (use yyyy-mm-dd)' });
+      return;
+    }
+    before = new Date(`${q.before}T00:00:00.000Z`);
+    if (Number.isNaN(before.getTime())) {
+      res.status(400).json({ error: 'bad before (use yyyy-mm-dd)' });
+      return;
+    }
+  }
+  const taskId = typeof q.taskId === 'string' && q.taskId ? q.taskId : undefined;
+  const type = typeof q.type === 'string' && isEventType(q.type) ? q.type : undefined;
+  if (typeof q.type === 'string' && q.type && !type) {
+    res.status(400).json({ error: 'bad type' });
+    return;
+  }
+  if (!before && !taskId && !type) {
+    res.status(400).json({ error: 'at least one filter required (before, taskId, type)' });
+    return;
+  }
+  const deleted = await prune(userId, { before: before ?? undefined, taskId, type });
+  res.json({ deleted });
+});
+
+/** Delete one journal entry (keeps the task). */
+boardRouter.delete('/journal/:id', async (req, res) => {
+  const userId = uid(req);
+  const ok = await deleteOne(userId, req.params.id);
+  if (!ok) {
+    res.status(404).json({ error: 'not found' });
+    return;
+  }
+  res.json({ ok: true });
 });
 
 /** Full timeline for a single task. */

@@ -1,4 +1,4 @@
-import { useRef, useState, type ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import Icon, { type IconName } from './Icon';
 import type { AgentState, FilterState, Priority } from '../types';
 
@@ -350,7 +350,6 @@ function ChangePasswordForm(props: {
   const [next, setNext] = useState('');
   const [msg, setMsg] = useState('');
   const [ok, setOk] = useState(false);
-  const first = useRef<HTMLInputElement>(null);
 
   return (
     <div>
@@ -358,7 +357,6 @@ function ChangePasswordForm(props: {
         Password
       </p>
       <input
-        ref={first}
         type="password"
         value={cur}
         onChange={(e) => setCur(e.target.value)}

@@ -36,12 +36,12 @@
   --kb-prio-medium: #d97706;
   --kb-prio-high: #dc2626;
   --kb-shadow-sm: 0 1px 2px rgb(0 0 0 / 0.05);
-  --kb-shadow-md: 0 2px 6px -1px rgb(0 0 0 / 0.09), 0 1px 2px rgb(0 0 0 / 0.05);
-  --kb-shadow-lg: 0 16px 40px -12px rgb(0 0 0 / 0.22), 0 4px 10px -4px rgb(0 0 0 / 0.1);
-  --kb-r-sm: 5px;
-  --kb-r-md: 7px;
-  --kb-r-lg: 10px;
-  --kb-t-fast: 110ms cubic-bezier(0.2, 0, 0.2, 1);
+  --kb-shadow-md: 0 4px 12px -2px rgb(0 0 0 / 0.08), 0 1px 2px rgb(0 0 0 / 0.05);
+  --kb-shadow-lg: 0 20px 44px -12px rgb(0 0 0 / 0.22), 0 4px 12px -4px rgb(0 0 0 / 0.1);
+  --kb-r-sm: 6px;
+  --kb-r-md: 8px;
+  --kb-r-lg: 12px;
+  --kb-t-fast: 140ms cubic-bezier(0.2, 0, 0.2, 1);
   /* native widgets (select popup, date picker, scrollbars) follow this */
   color-scheme: light;
 }
@@ -154,10 +154,11 @@ select:focus-visible {
   border-radius: var(--kb-r-md);
   padding: 0.4375rem 0.625rem;
   font-size: 13.5px;
-  transition: border-color var(--kb-t-fast), background var(--kb-t-fast);
+  transition: border-color var(--kb-t-fast), background var(--kb-t-fast), box-shadow var(--kb-t-fast);
 }
 .kb-input::placeholder { color: var(--kb-faint); }
 .kb-input:hover:not(:focus) { border-color: var(--kb-border-strong); }
+.kb-input:focus { border-color: var(--kb-accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--kb-accent) 18%, transparent); }
 
 .kb-btn {
   display: inline-flex;
@@ -176,8 +177,9 @@ select:focus-visible {
     color var(--kb-t-fast), opacity var(--kb-t-fast);
 }
 .kb-btn:hover { background: var(--kb-sunken); border-color: var(--kb-border-strong); }
-.kb-btn:active { transform: translateY(0.5px); }
+.kb-btn:active { transform: translateY(0.5px) scale(0.99); }
 .kb-btn:disabled { opacity: 0.45; pointer-events: none; }
+.kb-btn:focus-visible { outline: 2px solid var(--kb-accent); outline-offset: 2px; }
 
 .kb-btn-primary {
   background: var(--kb-accent);

@@ -37,15 +37,19 @@ interface Props {
   events: JournalEvent[];
   onOpenTask: (taskId: string) => void;
   onRefresh: () => void;
+  onDelete?: (id: string) => void;
+  onPrune?: (before: string) => void;
+  pruneBusy?: boolean;
 }
 
 /**
  * Cross-task activity feed. Grouped by day so a week of work reads as a
  * diary rather than a wall of rows.
  */
-export default function JournalPanel({ events, onOpenTask, onRefresh }: Props) {
+export default function JournalPanel({ events, onOpenTask, onRefresh, onDelete, onPrune, pruneBusy }: Props) {
   const [filter, setFilter] = useState<Filter>('all');
   const [limit, setLimit] = useState(40);
+  const [pruneBefore, setPruneBefore] = useState('');
 
   const visible = useMemo(() => events.filter((e) => matches(e, filter)), [events, filter]);
 
@@ -96,6 +100,28 @@ export default function JournalPanel({ events, onOpenTask, onRefresh }: Props) {
         {events.length} entries · {noteCount} written by you
       </p>
 
+      {onPrune && (
+        <div className="kb-panel-inset mb-2.5 flex items-center gap-1.5 p-1.5">
+          <input
+            type="date"
+            value={pruneBefore}
+            onChange={(e) => setPruneBefore(e.target.value)}
+            aria-label="Delete entries older than date"
+            data-testid="journal-prune-date"
+            className="font-mono-kb min-w-0 flex-1 bg-transparent text-[11.5px] text-kb-muted outline-none"
+          />
+          <button
+            onClick={() => pruneBefore && onPrune(pruneBefore)}
+            disabled={!pruneBefore || pruneBusy}
+            data-testid="journal-prune"
+            title="Delete entries older than this date"
+            className="kb-btn h-6 shrink-0 px-2 text-[11px]"
+          >
+            {pruneBusy ? 'Deleting…' : 'Delete older'}
+          </button>
+        </div>
+      )}
+
       {visible.length === 0 ? (
         <p className="py-8 text-center text-[12.5px] text-kb-faint" data-testid="journal-empty">
           {events.length === 0
@@ -112,10 +138,15 @@ export default function JournalPanel({ events, onOpenTask, onRefresh }: Props) {
               <ul>
                 {g.items.map((e) => (
                   <li key={e.id}>
-                    <button
+                    <div
                       onClick={() => onOpenTask(e.taskId)}
+                      onKeyDown={(ev) => {
+                        if (ev.key === 'Enter') onOpenTask(e.taskId);
+                      }}
+                      role="button"
+                      tabIndex={0}
                       data-testid="journal-item"
-                      className="group flex w-full gap-2 rounded-[6px] px-1.5 py-1.5 text-left transition-colors duration-100 hover:bg-[var(--kb-sunken)]"
+                      className="group flex w-full cursor-pointer gap-2 rounded-[6px] px-1.5 py-1.5 text-left transition-colors duration-100 hover:bg-[var(--kb-sunken)]"
                     >
                       <span className="mt-0.5 shrink-0 text-kb-faint">
                         <Icon name={EVENT_ICON[e.type]} size={12} strokeWidth={2} />
@@ -139,7 +170,21 @@ export default function JournalPanel({ events, onOpenTask, onRefresh }: Props) {
                       >
                         {relTime(e.createdAt)}
                       </time>
-                    </button>
+                      {onDelete && (
+                        <button
+                          onClick={(ev) => {
+                            ev.stopPropagation();
+                            onDelete(e.id);
+                          }}
+                          title="Delete this entry"
+                          aria-label="Delete journal entry"
+                          data-testid="journal-delete"
+                          className="grid h-5 w-5 shrink-0 place-items-center self-center rounded-[4px] text-kb-faint opacity-0 transition-opacity duration-100 hover:bg-[var(--kb-danger-soft)] hover:text-kb-danger focus-visible:opacity-100 group-hover:opacity-100"
+                        >
+                          <Icon name="trash" size={11} />
+                        </button>
+                      )}
+                    </div>
                   </li>
                 ))}
               </ul>

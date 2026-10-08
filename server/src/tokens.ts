@@ -6,10 +6,6 @@ export function hashToken(token: string): string {
   return crypto.createHash('sha256').update(token).digest('hex');
 }
 
-export function newRefreshId(): string {
-  return crypto.randomBytes(32).toString('hex');
-}
-
 export function signAccess(userId: string): string {
   return jwt.sign({ sub: userId }, env.jwtSecret, { expiresIn: '15m' });
 }
