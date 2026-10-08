@@ -4,15 +4,46 @@
     "servers": {
       "kanban": {
         "type": "local",
+        // Run from the kanban-board root. Auth comes from server/.env
+        // (KANBAN_USER_ID for local single-user, or KANBAN_TOKEN).
+        // Override per-launch with: "environment": { "KANBAN_USER_ID": "..." }
+        // Optional: "enabled": false, "timeout": 10000 (ms, default 5000).
         "command": ["npx", "tsx", "server/src/mcp.ts"]
       }
     }
   },
-  "permissions": [
-    { "action": "read", "resource": "*", "effect": "allow" },
-    { "action": "edit", "resource": "*", "effect": "allow" },
-    { "action": "shell", "resource": "git status *", "effect": "allow" },
-    { "action": "shell", "resource": "git diff *", "effect": "allow" },
-    { "action": "external_directory", "resource": "*", "effect": "deny" }
-  ]
+  // Verified against https://opencode.ai/config.json (additionalProperties: false).
+  // It is `permission`, singular, and an object keyed by tool name — not an array
+  // of {action, resource, effect}, which is the shape experimental.policies uses.
+  // Note there is no `shell` permission; the tool is called `bash`.
+  //
+  // Permissive on purpose: edits and shell run without prompting. The previous
+  // `permissions` array looked restrictive but was silently ignored (not a real
+  // key), so the effective behaviour was always OpenCode's permissive defaults.
+  // This block now actually parses — keep it permissive to match, or add
+  // { "*": "ask" } catch-alls to narrow it.
+  //
+  // Two rules that bite: patterns are simple wildcards where `*` also matches `/`,
+  // and the LAST matching rule wins — so any narrow rule goes after the catch-all.
+  "permission": {
+    "read": {
+      "*": "allow",
+      // server/.env holds DATABASE_URL and JWT_SECRET. Denying these costs no
+      // prompts (they just never open) and is also OpenCode's own default.
+      // Delete these three lines to read them like any other file.
+      "*.env": "deny",
+      "*.env.*": "deny",
+      "*.env.example": "allow"
+    },
+    "edit": "allow",
+    "bash": {
+      "*": "allow",
+      // Hard blocks, not prompts — they stop destructive commands outright.
+      // Remove these three lines for a completely unguarded shell.
+      "git push*": "deny",
+      "git reset --hard*": "deny",
+      "rm -rf*": "deny"
+    },
+    "external_directory": "allow"
+  }
 }
