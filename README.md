@@ -144,11 +144,19 @@ engine DLL is locked).
 - Passwords: bcrypt (12 rounds), never stored raw.
 - Access token: JWT, 15 min, `kb_at` httpOnly cookie. Refresh token: JWT, 30 days,
   `kb_rt` httpOnly cookie, hash stored in DB, rotated on every use.
-- Frontend auto-tries `POST /api/auth/refresh` once on 401, then retries.
+- **Sessions are per device.** Each login writes a `Session` row, so several
+  browsers stay signed in at once and signing out of one leaves the others alone.
+  (This was a single `refreshTokenHash` column on `User`, which allowed exactly
+  one live session — a second login silently logged the first browser out.)
+- Frontend auto-tries `POST /api/auth/refresh` once on 401, then retries — **including
+  for `/api/auth/me`**, which is the session bootstrap call. Only `login`,
+  `register`, `password` and `refresh` itself are exempt, since their 401s are real
+  answers rather than an expired token. Concurrent 401s share one refresh so they
+  cannot race the rotation.
 - Cookies: `SameSite=Lax` (dev, same-site localhost) / `SameSite=None; Secure` (prod,
   cross-origin).
 - Every board and journal query is scoped by `userId` from the verified token.
-- Change password rotates everything (other sessions die, re-login required).
+- Change password revokes every session (all browsers re-login required).
 
 ## Tests
 

@@ -107,11 +107,46 @@ async function raw(path: string, init?: RequestInit): Promise<Response> {
   });
 }
 
+/**
+ * Endpoints where a 401 is a final answer, not an expired access token.
+ *
+ * `/api/auth/me` must NOT be listed here: it is the session bootstrap call, so
+ * excluding it meant an expired 15-minute access token threw the user back to
+ * the login screen on every page load, even though the 30-day refresh cookie
+ * was still valid. Login/register fail on bad credentials and password fails on
+ * a wrong current password, so retrying those would only mask the real error.
+ */
+const NO_RETRY_ON_401 = new Set([
+  '/api/auth/refresh',
+  '/api/auth/login',
+  '/api/auth/register',
+  '/api/auth/password',
+]);
+
+let refreshInFlight: Promise<boolean> | null = null;
+
+/**
+ * One refresh at a time, shared by every caller that hits a 401.
+ *
+ * The server rotates the refresh token on use, so two refreshes sent in parallel
+ * race: the second presents the token the first just consumed and is rejected.
+ * The app fires a mutation and `refreshJournal()` together, so that race is
+ * reachable on ordinary edits. Coalescing keeps it to a single rotation.
+ */
+function refreshOnce(): Promise<boolean> {
+  refreshInFlight ??= raw('/api/auth/refresh', { method: 'POST' })
+    .then((r) => r.ok)
+    .catch(() => false)
+    .finally(() => {
+      refreshInFlight = null;
+    });
+  return refreshInFlight;
+}
+
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
   let res = await raw(path, init);
-  if (res.status === 401 && !path.startsWith('/api/auth/')) {
-    const r = await raw('/api/auth/refresh', { method: 'POST' });
-    if (r.ok) res = await raw(path, init);
+  if (res.status === 401 && !NO_RETRY_ON_401.has(path) && (await refreshOnce())) {
+    res = await raw(path, init);
   }
   if (!res.ok) {
     let msg = `request failed (${res.status})`;

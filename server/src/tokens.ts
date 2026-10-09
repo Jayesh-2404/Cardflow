@@ -10,8 +10,17 @@ export function signAccess(userId: string): string {
   return jwt.sign({ sub: userId }, env.jwtSecret, { expiresIn: '15m' });
 }
 
+/**
+ * `jti` is required, not cosmetic. Without it the token is a pure function of
+ * (userId, second), so a rotation issued inside the same second as the token it
+ * replaces returns the identical string and the old cookie stays valid.
+ */
 export function signRefresh(userId: string): string {
-  return jwt.sign({ sub: userId, typ: 'refresh' }, env.jwtSecret, { expiresIn: '30d' });
+  return jwt.sign(
+    { sub: userId, typ: 'refresh', jti: crypto.randomUUID() },
+    env.jwtSecret,
+    { expiresIn: '30d' },
+  );
 }
 
 export function verifyAccess(token: string): string | null {

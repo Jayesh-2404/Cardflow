@@ -23,10 +23,19 @@ import Icon from './components/Icon';
 import { ApiError, api, API_BASE, fromServer, type JournalEvent } from './lib/api';
 import { DEFAULT_FILTERS, type BoardState, type FilterState, type Task } from './types';
 import { todayISO } from './lib/format';
-import '@fontsource/inter/400.css';
-import '@fontsource/inter/500.css';
-import '@fontsource/inter/600.css';
-import '@fontsource/jetbrains-mono/400.css';
+/**
+ * Latin subsets only.
+ *
+ * The umbrella `@fontsource/inter/400.css` files declare every subset
+ * (cyrillic, greek, vietnamese, ...) which emitted 25 font files and ~744KB of
+ * dead weight in `dist` for a board whose copy is English. The latin subset
+ * covers U+2000-206F, so the em-dashes and arrows in this UI still render from
+ * Inter rather than falling back to a system font.
+ */
+import '@fontsource/inter/latin-400.css';
+import '@fontsource/inter/latin-500.css';
+import '@fontsource/inter/latin-600.css';
+import '@fontsource/jetbrains-mono/latin-400.css';
 import './index.css';
 
 function matchesFilters(t: Task, f: FilterState): boolean {

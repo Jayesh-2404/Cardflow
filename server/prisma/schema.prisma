@@ -9,13 +9,33 @@ datasource db {
 }
 
 model User {
-  id               String   @id @default(cuid())
-  email            String   @unique
-  passwordHash     String
-  refreshTokenHash String?
-  createdAt        DateTime @default(now())
-  columns          Column[]
-  tasks            Task[]
+  id           String    @id @default(cuid())
+  email        String    @unique
+  passwordHash String
+  createdAt    DateTime  @default(now())
+  columns      Column[]
+  tasks        Task[]
+  sessions     Session[]
+}
+
+/*
+  One row per signed-in device.
+
+  This used to be a single `refreshTokenHash` column on User, which allowed
+  exactly one live session: logging in on a second browser overwrote the hash
+  and silently logged the first one out. Each browser now gets its own row, so
+  sessions coexist and only the row being used is rotated.
+*/
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String   @unique
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+
+  @@index([userId])
+  @@index([expiresAt])
 }
 
 model Column {

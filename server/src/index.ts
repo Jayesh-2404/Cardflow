@@ -3,6 +3,7 @@ import 'express-async-errors';
 import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import { env } from './env';
+import { warmDatabase } from './db';
 import { authRouter } from './routes/auth';
 import { boardRouter } from './routes/board';
 
@@ -40,4 +41,5 @@ app.use(
 
 app.listen(env.port, () => {
   console.log(`kanban-server on :${env.port} (frontend: ${env.frontendOrigin})`);
+  warmDatabase();
 });
