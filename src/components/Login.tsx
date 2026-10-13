@@ -27,8 +27,8 @@ export default function Login({ onAuthed }: { onAuthed: (email: string, board: B
         mode === 'login' ? await api.login(email, password) : await api.register(email, password);
       onAuthed(res.user.email, fromServer(res.board));
     } catch (err) {
-      if (err instanceof ApiError && err.status === 403 && mode === 'register') {
-        setError('Already set up — switch to Log in.');
+      if (err instanceof ApiError && err.status === 409 && mode === 'register') {
+        setError('Email already registered — switch to Log in.');
       } else if (err instanceof ApiError) {
         setError(err.message);
       } else {
@@ -72,7 +72,7 @@ export default function Login({ onAuthed }: { onAuthed: (email: string, board: B
           <h1 className="text-[15px] font-semibold tracking-[-0.01em]">My Board</h1>
         </div>
         <p className="mt-1.5 text-[12.5px] text-kb-muted">
-          {mode === 'login' ? 'Log in to your board.' : 'First run — create your account.'}
+          {mode === 'login' ? 'Log in to your board.' : 'Create your account.'}
         </p>
 
         <div className="mt-4 flex gap-1.5">
@@ -127,8 +127,8 @@ export default function Login({ onAuthed }: { onAuthed: (email: string, board: B
 
         <p className="mt-3.5 flex items-start gap-1.5 text-[11px] leading-relaxed text-kb-faint">
           <Icon name="lock" size={12} className="mt-0.5" />
-          Passwords are hashed with bcrypt; sessions live in httpOnly cookies. Registration locks
-          after the first account.
+          Passwords are hashed with bcrypt; sessions live in httpOnly cookies. Each account
+          gets a private board with live sync across tabs.
         </p>
       </form>
     </div>

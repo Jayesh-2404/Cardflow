@@ -1,8 +1,8 @@
 /**
  * Provision the account the e2e suite logs in as.
  *
- * Registration is locked after the first account, so the suite cannot create
- * its own user through /api/auth/register. This writes one directly.
+ * Registration is open, but the suite reuses one seeded account so runs stay
+ * isolated from manual testing.
  *
  *   cd server && npm run e2e:seed
  *

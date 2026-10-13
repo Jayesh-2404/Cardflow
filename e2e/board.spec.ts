@@ -1,9 +1,8 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 
 /**
- * The suite runs against a real API and a real Postgres journal. Registration
- * locks after the first account, so the account is provisioned out of band by
- * `npm run e2e:seed` (see README) and reused here.
+ * The suite runs against a real API and a real Postgres journal. The account is
+ * provisioned out of band by `npm run e2e:seed` (see README) and reused here.
  */
 const API = process.env.E2E_API_URL ?? 'http://localhost:4000';
 const E2E_EMAIL = process.env.E2E_EMAIL ?? 'e2e-local@kb.test';

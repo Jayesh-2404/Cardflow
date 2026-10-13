@@ -6,8 +6,12 @@ import { hashToken, signAccess, signRefresh, verifyRefresh } from '../tokens';
 import { requireAuth, type AuthedRequest } from '../middleware';
 import { validEmail, validPassword } from '../validate';
 import { getBoardState, seedDefaults } from '../board';
+import { authLimiter } from '../rateLimit';
 
 export const authRouter = Router();
+
+authRouter.use('/register', authLimiter(30, 10 * 60 * 1000));
+authRouter.use('/login', authLimiter(60, 10 * 60 * 1000));
 
 const REFRESH_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
@@ -38,21 +42,22 @@ async function startSession(userId: string): Promise<{ access: string; refresh: 
   return { access, refresh };
 }
 
-/** First-run setup only: works while no user exists, then locks to 403. */
+/** Open registration: every account gets an isolated board seeded with defaults. */
 authRouter.post('/register', async (req, res) => {
   const { email, password } = req.body as { email?: unknown; password?: unknown };
   if (!validEmail(email) || !validPassword(password)) {
     res.status(400).json({ error: 'valid email + password (min 8 chars) required' });
     return;
   }
-  const existing = await prisma.user.count();
-  if (existing > 0) {
-    res.status(403).json({ error: 'already set up — please log in' });
+  const normalized = email.trim().toLowerCase();
+  const taken = await prisma.user.findUnique({ where: { email: normalized } });
+  if (taken) {
+    res.status(409).json({ error: 'email already registered — please log in' });
     return;
   }
   const passwordHash = await bcrypt.hash(password, 12);
   const user = await prisma.user.create({
-    data: { email: email.trim().toLowerCase(), passwordHash },
+    data: { email: normalized, passwordHash },
   });
   await seedDefaults(user.id);
   const { access, refresh } = await startSession(user.id);

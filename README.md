@@ -30,7 +30,7 @@ npm run dev            # http://localhost:5173
 ```
 
 First run: open the web app → **Create account** tab → register your email + password
-(min 8). Registration locks after the first account (`403` afterwards). Then log in.
+(min 8). Every account gets a private board. Boards stay isolated by `userId`.
 
 ## Keyboard
 
@@ -169,8 +169,7 @@ npm run typecheck       # src + the test suite
 ```
 
 E2E runs against a real API and a real Postgres journal, so persistence is genuinely
-asserted. Registration locks after the first account, so the suite's user is provisioned
-out of band.
+asserted. The suite logs in as a provisioned account and resets its own board.
 
 ```bash
 # one-time: create the account the suite logs in as
