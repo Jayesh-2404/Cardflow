@@ -10,6 +10,7 @@ interface Props {
   onOpenPalette?: () => void;
   doneToday: number;
   totalOpen: number;
+  live?: 'live' | 'retry' | 'off';
 }
 
 const Header = forwardRef<HTMLInputElement, Props>(function Header(props, searchRef) {
@@ -18,6 +19,19 @@ const Header = forwardRef<HTMLInputElement, Props>(function Header(props, search
       <h1 className="order-1 shrink-0 text-[13px] font-semibold tracking-[-0.01em]">
         My Board
       </h1>
+      <span
+        data-testid="live-status"
+        title={props.live === 'live' ? 'Live sync on' : 'Reconnecting'}
+        className={`order-1 flex items-center gap-1 rounded-full border px-1.5 py-0.5 font-mono-kb text-[10px] ${
+          props.live === 'live' ? 'text-kb-muted' : 'text-kb-danger'
+        }`}
+      >
+        <span
+          className="inline-block h-1.5 w-1.5 rounded-full"
+          style={{ background: props.live === 'live' ? 'var(--kb-ok)' : 'var(--kb-danger)' }}
+        />
+        {props.live === 'live' ? 'Live' : 'Sync'}
+      </span>
 
       {/* search drops to its own row below sm so it never gets crushed */}
       <div className="order-3 w-full sm:order-2 sm:w-auto sm:flex-1 sm:max-w-md">

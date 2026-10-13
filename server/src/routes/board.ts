@@ -12,6 +12,7 @@ import {
   validPriority,
 } from '../validate';
 import { getBoardState, seedDefaults } from '../board';
+import { addClient, bump, versionFor } from '../realtime';
 import {
   countsFor,
   deleteOne,
@@ -49,6 +50,30 @@ async function columnTitles(userId: string): Promise<Map<string, string>> {
 
 boardRouter.get('/', async (req, res) => {
   res.json({ board: await getBoardState(uid(req)) });
+});
+
+/** Live sync: one SSE stream per tab. Client refetches board + journal on push. */
+boardRouter.get('/stream', async (req, res) => {
+  const userId = uid(req);
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    Connection: 'keep-alive',
+  });
+  res.write(`: connected v${versionFor(userId)}\n\n`);
+  const remove = addClient(userId, res);
+  const beat = setInterval(() => {
+    try {
+      res.write(': ping\n\n');
+    } catch {
+      clearInterval(beat);
+      remove();
+    }
+  }, 25000);
+  req.on('close', () => {
+    clearInterval(beat);
+    remove();
+  });
 });
 
 const PRIORITY_RANK: Record<string, number> = { high: 0, medium: 1, low: 2 };
@@ -139,6 +164,7 @@ boardRouter.delete('/journal', async (req, res) => {
     return;
   }
   const deleted = await prune(userId, { before: before ?? undefined, taskId, type });
+  bump(userId);
   res.json({ deleted });
 });
 
@@ -150,6 +176,7 @@ boardRouter.delete('/journal/:id', async (req, res) => {
     res.status(404).json({ error: 'not found' });
     return;
   }
+  bump(userId);
   res.json({ ok: true });
 });
 
@@ -191,6 +218,7 @@ boardRouter.post('/tasks/:id/notes', async (req, res) => {
       detail: body,
     },
   });
+  bump(userId);
   res.status(201).json({
     event: {
       id: event.id,
@@ -276,6 +304,7 @@ boardRouter.patch('/columns/order', async (req, res) => {
       ),
     );
   }
+  bump(userId);
   res.json({ board: await getBoardState(userId) });
 });
 
@@ -310,6 +339,7 @@ boardRouter.patch('/columns/:id', async (req, res) => {
       ),
     );
   }
+  bump(userId);
   res.json({ board: await getBoardState(userId) });
 });
 
@@ -336,6 +366,7 @@ boardRouter.delete('/columns/:id', async (req, res) => {
   });
   await prisma.column.delete({ where: { id: target.id } });
   await renumberColumn(userId, fallback.id);
+  bump(userId);
   res.json({ board: await getBoardState(userId) });
 });
 
@@ -640,6 +671,7 @@ boardRouter.patch('/tasks/:id', async (req, res) => {
       detail: data.lastCommit as string,
     });
   }
+  bump(userId);
   res.json({ board: await getBoardState(userId) });
 });
 
@@ -686,6 +718,7 @@ boardRouter.post('/tasks/:id/move', async (req, res) => {
       toColumn: titles.get(columnId) ?? null,
     });
   }
+  bump(userId);
   res.json({ board: await getBoardState(userId) });
 });
 
@@ -707,6 +740,7 @@ boardRouter.delete('/tasks/:id', async (req, res) => {
     summary: `Deleted from ${titles.get(task.columnId) ?? 'a list'}`,
     fromColumn: titles.get(task.columnId) ?? null,
   });
+  bump(userId);
   res.json({ board: await getBoardState(userId) });
 });
 
@@ -791,6 +825,7 @@ boardRouter.post('/replace', async (req, res) => {
       });
     }
   });
+  bump(userId);
   res.json({ board: await getBoardState(userId) });
 });
 
@@ -898,6 +933,7 @@ boardRouter.delete('/', async (req, res) => {
     await tx.task.deleteMany({ where: { userId } });
     await tx.column.deleteMany({ where: { userId } });
   });
+  bump(userId);
   res.json({ board: await getBoardState(userId) });
 });
 
@@ -912,5 +948,6 @@ boardRouter.post('/reset', async (req, res) => {
     await tx.column.deleteMany({ where: { userId } });
     await seedDefaults(userId, tx);
   });
+  bump(userId);
   res.json({ board: await getBoardState(userId) });
 });

@@ -84,6 +84,14 @@ archived/unarchived, deleted, plus free-form notes you write yourself.
 - Light and dark themes with `color-scheme` set per theme, so native widgets (select popup,
   date picker, scrollbars) match
 
+## Realtime
+
+`GET /api/board/stream` is an SSE feed scoped to the signed-in user. Every board
+or journal mutation bumps a per-user version and pushes one event. Tabs listen
+with `EventSource` and refetch board plus journal on push. Heartbeat every 25s.
+Single process hub. Fine for a small team. Redis pubsub is the swap when a
+second API replica appears.
+
 ## Journal retention (DB growth)
 
 `TaskEvent` is append-only by design, so the board adds a delete path rather than

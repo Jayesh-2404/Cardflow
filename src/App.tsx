@@ -21,6 +21,7 @@ import CommandPalette from './components/CommandPalette';
 import Login from './components/Login';
 import Icon from './components/Icon';
 import { ApiError, api, API_BASE, fromServer, type JournalEvent } from './lib/api';
+import { subscribeBoard, type LiveStatus } from './lib/live';
 import { DEFAULT_FILTERS, type BoardState, type FilterState, type Task } from './types';
 import { todayISO } from './lib/format';
 /**
@@ -109,6 +110,7 @@ export default function App() {
   const [notesBusy, setNotesBusy] = useState(false);
   const [pruneBusy, setPruneBusy] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [live, setLive] = useState<LiveStatus>('off');
   const [columnHint, setColumnHint] = useState<{ id: string } & ColumnDropHint | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const journalQueue = useRef<Promise<void>>(Promise.resolve());
@@ -157,6 +159,22 @@ export default function App() {
       cancelled = true;
     };
   }, []);
+
+  // live sync across tabs and devices; server push triggers a refetch
+  useEffect(() => {
+    if (!user) return;
+    const stop = subscribeBoard(
+      () => {
+        api
+          .getBoard()
+          .then((b) => setBoard(b))
+          .catch(() => {});
+        void refreshJournal();
+      },
+      (s) => setLive(s),
+    );
+    return stop;
+  }, [user]);
 
   // keyboard shortcuts
   useEffect(() => {
@@ -762,6 +780,7 @@ export default function App() {
           activeFilterCount={activeFilterCount}
           doneToday={doneCount}
           totalOpen={openTasks.length}
+          live={live}
           onOpenPalette={() => setPaletteOpen(true)}
           onOpenFilters={() => {
             setPanel('filters');
