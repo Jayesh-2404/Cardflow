@@ -204,10 +204,18 @@ Frontend build-time: `VITE_API_URL` (default `http://localhost:4000`).
 
 ## Deploy
 
-- **Migrate first** — the journal lives in a new `TaskEvent` table:
-  `npx prisma migrate deploy`
-- API: any Node host (VPS, Render, Railway, Fly). Set env vars, `npm run build && npm start`.
+Full runbook: `docs/DEPLOY.md` (Neon create → migrate → API host → web host → verify,
+with rollback and a post-deploy checklist). Short version:
+
+- **Migrate first** — `cd server && npx prisma migrate deploy` (needs `DIRECT_URL`).
+- Validate the prod env before deploying: `npm run preflight` in `server/` — it fails
+  with one clear line per problem.
+- API: any Node host. Build `npm ci --include=dev && npm run build`, start
+  `npm run db:deploy && npm start`, with prod env: `NODE_ENV=production`,
+  `FRONTEND_ORIGIN=https://your-board-url` (exact origin, https, no trailing slash),
+  strong `JWT_SECRET`, Neon pooled `DATABASE_URL` and direct `DIRECT_URL`. The server
+  refuses to boot with any of that missing or weak.
 - Web: static `dist/` anywhere (`vercel.json` included). Build with
-  `VITE_API_URL=https://your-api-host`.
-- Prod checklist: `NODE_ENV=production`, `FRONTEND_ORIGIN=https://your-board-url`, strong
-  `JWT_SECRET`, Neon pooled URL at runtime.
+  `VITE_API_URL=https://your-api-host`; a Vercel build without it fails on purpose.
+- Health: `GET /api/health` (cheap liveness, used by hosts) and `GET /api/health/db`
+  (503 while Postgres is unreachable).
