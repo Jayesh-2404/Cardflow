@@ -216,6 +216,6 @@ with rollback and a post-deploy checklist). Short version:
   strong `JWT_SECRET`, Neon pooled `DATABASE_URL` and direct `DIRECT_URL`. The server
   refuses to boot with any of that missing or weak.
 - Web: static `dist/` anywhere (`vercel.json` included). Build with
-  `VITE_API_URL=https://your-api-host`; a Vercel build without it fails on purpose.
+  `VITE_API_URL=https://your-api-host`; a production Vercel build without it fails on purpose.
 - Health: `GET /api/health` (cheap liveness, used by hosts) and `GET /api/health/db`
   (503 while Postgres is unreachable).

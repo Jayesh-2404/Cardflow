@@ -144,9 +144,9 @@ VITE_API_URL=https://your-api.onrender.com
 ```
 
 `VITE_API_URL` is inlined into the JS bundle **at build time** — changing it in the
-dashboard does nothing until you redeploy. To catch the classic mistake early, a Vercel
-build with no `VITE_API_URL` now fails with a message saying exactly this; locally the
-build only warns, because a local build may legitimately target the dev API.
+dashboard does nothing until you redeploy. To catch the classic mistake early, a
+production Vercel build with no `VITE_API_URL` now fails with a message saying exactly
+this; preview and local builds only warn, so a preview without the var does not go red.
 
 Verify the deployed bundle carries the URL:
 
