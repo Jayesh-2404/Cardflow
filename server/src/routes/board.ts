@@ -59,6 +59,9 @@ boardRouter.get('/stream', async (req, res) => {
     'Content-Type': 'text/event-stream',
     'Cache-Control': 'no-cache',
     Connection: 'keep-alive',
+    // nginx and friends buffer proxied responses by default, which silently
+    // turns a live stream into "nothing arrives until the buffer fills".
+    'X-Accel-Buffering': 'no',
   });
   res.write(`: connected v${versionFor(userId)}\n\n`);
   const remove = addClient(userId, res);

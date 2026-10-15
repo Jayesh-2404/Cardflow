@@ -143,6 +143,18 @@ function refreshOnce(): Promise<boolean> {
   return refreshInFlight;
 }
 
+/**
+ * Refresh the session outside the 401-retry path.
+ *
+ * The SSE stream reconnects with whatever cookies the browser has; once the
+ * 15-minute access cookie has expired those reconnects get a 401 that
+ * `EventSource` cannot retry its way out of. live.ts calls this on error so a
+ * stale cookie becomes a fresh one before the next attempt.
+ */
+export function refreshSession(): Promise<boolean> {
+  return refreshOnce();
+}
+
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
   let res = await raw(path, init);
   if (res.status === 401 && !NO_RETRY_ON_401.has(path) && (await refreshOnce())) {

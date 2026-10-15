@@ -1,4 +1,4 @@
-import { API_BASE } from './api';
+import { API_BASE, refreshSession } from './api';
 
 export type LiveStatus = 'live' | 'retry' | 'off';
 
@@ -36,7 +36,13 @@ export function subscribeBoard(
     source.onerror = () => {
       onStatus('retry');
       cleanup();
-      schedule();
+      // A stream that dies after the 15-minute access cookie expired would
+      // reconnect to a 401 forever, silently killing live sync in an idle tab.
+      // Refresh first; if the session is gone the retry loop backs off as usual.
+      void refreshSession().then((ok) => {
+        if (ok) delay = 1000;
+        schedule();
+      });
     };
   };
 
