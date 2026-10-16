@@ -180,13 +180,13 @@ export function NoteComposer({
         placeholder={placeholder}
         aria-label="Journal note"
         data-testid={testId}
-        className="w-full flex-1 resize-none overflow-hidden bg-transparent text-[14px] leading-[22px] text-kb-text outline-none placeholder:text-kb-faint"
+        className="w-full flex-1 resize-none overflow-hidden bg-transparent text-[14px] leading-[20px] text-kb-text outline-none placeholder:text-kb-faint"
       />
       <button
         onClick={send}
         disabled={!value.trim() || busy}
         data-testid="note-submit"
-        className="shrink-0 self-end rounded-full px-3 py-0 text-[12px] font-medium leading-[22px] text-kb-accent transition-colors duration-150 hover:bg-[var(--kb-accent-soft)] disabled:text-kb-faint disabled:hover:bg-transparent"
+        className="shrink-0 self-end rounded-full px-3 py-0 text-[12px] font-medium leading-[20px] text-kb-accent transition-colors duration-150 hover:bg-[var(--kb-accent-soft)] disabled:text-kb-faint disabled:hover:bg-transparent"
       >
         {busy ? 'Logging…' : 'Log entry'}
       </button>
