@@ -3,6 +3,45 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 /*
+  The token scale, registered as real Tailwind theme colours.
+
+  Without this, `text-kb-muted` is just a string: Tailwind has no `kb` palette,
+  silently emits nothing for it, and the element keeps its inherited colour —
+  which is how every muted, faint and label grey in the app came out as plain
+  body text.
+
+  `inline` is load-bearing. A non-inline theme emits `--color-kb-muted:
+  var(--kb-muted)` once on `:root`, where the substitution resolves to the
+  light value and dark mode stops working. Inlining puts `var(--kb-muted)` in
+  the utility itself, so the element's own cascade decides.
+*/
+@theme inline {
+  --color-kb-bg: var(--kb-bg);
+  --color-kb-card: var(--kb-card);
+  --color-kb-sunken: var(--kb-sunken);
+  --color-kb-sunken-strong: var(--kb-sunken-strong);
+  --color-kb-border: var(--kb-border);
+  --color-kb-border-strong: var(--kb-border-strong);
+  --color-kb-text: var(--kb-text);
+  --color-kb-muted: var(--kb-muted);
+  --color-kb-faint: var(--kb-faint);
+  --color-kb-label: var(--kb-label);
+  --color-kb-accent: var(--kb-accent);
+  --color-kb-accent-hover: var(--kb-accent-hover);
+  --color-kb-accent-soft: var(--kb-accent-soft);
+  --color-kb-on-accent: var(--kb-on-accent);
+  --color-kb-danger: var(--kb-danger);
+  --color-kb-danger-soft: var(--kb-danger-soft);
+  --color-kb-warn: var(--kb-warn);
+  --color-kb-warn-soft: var(--kb-warn-soft);
+  --color-kb-ok: var(--kb-ok);
+  --color-kb-ok-soft: var(--kb-ok-soft);
+  --color-kb-prio-low: var(--kb-prio-low);
+  --color-kb-prio-medium: var(--kb-prio-medium);
+  --color-kb-prio-high: var(--kb-prio-high);
+}
+
+/*
   Tailwind v4 layer order: theme, base, components, utilities.
   Component classes live in `components` so a utility on the same element
   (e.g. `pl-8` on `.kb-input`) still wins.
