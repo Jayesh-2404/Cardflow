@@ -241,7 +241,8 @@ select:focus-visible {
   transition: border-color var(--kb-t-fast) var(--kb-ease),
     background var(--kb-t-fast) var(--kb-ease), box-shadow var(--kb-t-fast) var(--kb-ease);
 }
-.kb-input::placeholder { color: var(--kb-faint); }
+/* The reference's own placeholder tone: readable, quieter than the value. */
+.kb-input::placeholder { color: var(--kb-muted); }
 .kb-input:hover:not(:focus) { border-color: var(--kb-border-strong); }
 .kb-input:focus { border-color: var(--kb-accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--kb-accent) 16%, transparent); }
 
