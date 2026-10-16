@@ -2,7 +2,7 @@
  VERCEL  -  kanban board frontend (Vite + React + Tailwind)
  Service: https://notes-dusky-eta-79.vercel.app/
  Repo:    Jayesh-2404/Notes   Branch: main
- Canonical runbook (new deploys): projects/kanban-board/docs/DEPLOY.md
+ Canonical runbook (new deploys): docs/DEPLOY.md
 ================================================================================
 
 

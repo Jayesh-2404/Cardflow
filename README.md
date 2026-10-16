@@ -7,7 +7,6 @@ bcrypt, JWT in httpOnly cookies.
 ## Layout
 
 ```
-projects/kanban-board/
   src/              # frontend (static, talks to API)
   server/           # API (Node + Prisma, holds all secrets)
   e2e/              # Playwright specs
@@ -17,14 +16,13 @@ projects/kanban-board/
 
 ```bash
 # 1. API
-cd projects/kanban-board/server
+cd server
 npm install
 cp .env.example .env   # fill DATABASE_URL, DIRECT_URL, JWT_SECRET
 npx prisma migrate dev # creates tables in Neon
 npm run dev            # http://localhost:4000
 
-# 2. Web (new terminal)
-cd projects/kanban-board
+# 2. Web (new terminal, from the repo root)
 npm install
 npm run dev            # http://localhost:5173
 ```

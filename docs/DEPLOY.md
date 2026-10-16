@@ -44,7 +44,7 @@ The API's journal reads a table that must exist before the first boot; land migr
 before (or with) the first production boot.
 
 ```powershell
-cd projects/kanban-board/server
+cd server
 npm ci --include=dev
 copy .env.example .env      # bash: cp .env.example .env
 # edit .env: DATABASE_URL = pooled, DIRECT_URL = direct, JWT_SECRET = a fresh secret
@@ -110,7 +110,7 @@ Before saving, check exactly these values with the production rules (paste your 
 values; the script reads `server/.env`, but real environment variables win):
 
 ```powershell
-cd projects/kanban-board/server
+cd server
 $env:NODE_ENV='production'
 $env:DATABASE_URL='postgresql://...pooler...:5432/kanban?sslmode=require'
 $env:DIRECT_URL='postgresql://...direct...:5432/kanban?sslmode=require'
@@ -134,7 +134,7 @@ interfaces by default; the host only needs to map its `PORT`.
 
 | Setting | Value |
 | --- | --- |
-| Root Directory | `projects/kanban-board` |
+| Root Directory | repo root (this repo is the app; leave it empty) |
 | Framework Preset | Vite (leave; `vercel.json` pins build command, output dir and the SPA rewrite) |
 
 Environment variable (**Production** scope):
@@ -158,7 +158,7 @@ curl -s https://your-board.vercel.app/assets/<that-file>.js | grep -o 'https://[
 ### Any other static host
 
 ```powershell
-cd projects/kanban-board
+# from the repo root
 $env:VITE_API_URL='https://your-api.onrender.com'
 npm ci
 npm run build      # upload dist/

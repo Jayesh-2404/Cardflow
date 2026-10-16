@@ -2,7 +2,7 @@
  RENDER  -  kanban API (Express + Prisma)
  Service: https://notes-jo06.onrender.com
  Repo:    Jayesh-2404/Notes   Branch: main
- Canonical runbook (new deploys): projects/kanban-board/docs/DEPLOY.md
+ Canonical runbook (new deploys): docs/DEPLOY.md
 ================================================================================
 
 

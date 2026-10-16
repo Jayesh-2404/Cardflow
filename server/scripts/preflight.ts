@@ -1,7 +1,7 @@
 /**
  * Pre-deploy environment check.
  *
- *   cd projects/kanban-board/server
+ *   cd server
  *   npm run preflight          # production rules, for the values the host will get
  *   npm run preflight:dev      # relaxed sanity check for local development
  *   (tsx scripts/preflight.ts --dev does the same when called directly)
