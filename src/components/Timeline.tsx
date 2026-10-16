@@ -1,5 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import Icon, { type IconName } from './Icon';
+import { useAutoGrow } from '../lib/autoGrow';
 import { absTime, dayLabel, relTime } from '../lib/format';
 import type { EventType, JournalEvent } from '../lib/api';
 
@@ -140,7 +141,7 @@ export function Timeline({
   );
 }
 
-/** Quick note composer. Enter submits, Shift+Enter adds a line. */
+/** Quick note composer: one pill row that grows with the note. Enter submits, Shift+Enter adds a line. */
 export function NoteComposer({
   onSubmit,
   busy,
@@ -153,6 +154,8 @@ export function NoteComposer({
   testId?: string;
 }) {
   const [value, setValue] = useState('');
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  useAutoGrow(inputRef, value);
 
   function send() {
     const note = value.trim();
@@ -162,8 +165,10 @@ export function NoteComposer({
   }
 
   return (
-    <div className="kb-panel-inset p-1.5">
+    <div className="flex min-h-[34px] items-end gap-2 rounded-[var(--kb-r-control)] border bg-[var(--kb-card)] py-1.5 pl-3 pr-1.5 kb-border transition-colors duration-150 focus-within:border-[var(--kb-accent)]">
       <textarea
+        ref={inputRef}
+        rows={1}
         value={value}
         onChange={(e) => setValue(e.target.value)}
         onKeyDown={(e) => {
@@ -172,26 +177,19 @@ export function NoteComposer({
             send();
           }
         }}
-        rows={2}
         placeholder={placeholder}
         aria-label="Journal note"
         data-testid={testId}
-        className="w-full resize-none bg-transparent text-[12.5px] leading-relaxed outline-none placeholder:text-kb-faint"
+        className="w-full flex-1 resize-none overflow-hidden bg-transparent text-[14px] leading-[22px] text-kb-text outline-none placeholder:text-kb-faint"
       />
-      <div className="mt-1 flex items-center gap-1.5">
-        <button
-          onClick={send}
-          disabled={!value.trim() || busy}
-          data-testid="note-submit"
-          className="kb-btn kb-btn-primary h-6 px-2 text-[11.5px]"
-        >
-          <Icon name="plus" size={12} strokeWidth={2.25} />
-          {busy ? 'Logging…' : 'Log entry'}
-        </button>
-        <span className="ml-auto text-[10.5px] text-kb-faint">
-          <kbd className="kb-kbd">↵</kbd> to log
-        </span>
-      </div>
+      <button
+        onClick={send}
+        disabled={!value.trim() || busy}
+        data-testid="note-submit"
+        className="shrink-0 self-end rounded-full px-3 py-0 text-[12px] font-medium leading-[22px] text-kb-accent transition-colors duration-150 hover:bg-[var(--kb-accent-soft)] disabled:text-kb-faint disabled:hover:bg-transparent"
+      >
+        {busy ? 'Logging…' : 'Log entry'}
+      </button>
     </div>
   );
 }

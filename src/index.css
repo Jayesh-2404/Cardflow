@@ -96,6 +96,8 @@
   --kb-r-lg: 16px;
   --kb-r-xl: 22px;
   --kb-r-2xl: 26px;
+  /* drawer property controls: a 36px field with this radius */
+  --kb-r-control: 18px;
   --kb-r-pill: 9999px;
   /* motion: two curves, both spring-shaped, plus plain durations */
   --kb-t-instant: 90ms;
@@ -243,6 +245,17 @@ select:focus-visible {
 .kb-input:hover:not(:focus) { border-color: var(--kb-border-strong); }
 .kb-input:focus { border-color: var(--kb-accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--kb-accent) 16%, transparent); }
 
+/*
+  The drawer's property control: 36px tall at the reference's 18px radius, so a
+  select, a date field and a text field all sit on one line rhythm beside a
+  96px label.
+*/
+.kb-input-pill {
+  height: 2.25rem;
+  padding: 0 0.75rem;
+  border-radius: var(--kb-r-control);
+}
+
 .kb-btn {
   display: inline-flex;
   align-items: center;
@@ -312,7 +325,7 @@ select:focus-visible {
   display: inline-flex;
   align-items: center;
   gap: 2px;
-  border-radius: var(--kb-r-pill);
+  border-radius: var(--kb-r-control);
   background: var(--kb-sunken);
   padding: 3px;
 }
@@ -325,7 +338,8 @@ select:focus-visible {
   gap: 0.35rem;
   border-radius: var(--kb-r-pill);
   padding: 0.25rem 0.75rem;
-  font-size: 12.5px;
+  font-size: 12px;
+  letter-spacing: -0.012em;
   color: var(--kb-muted);
   transition: color var(--kb-t-fast) var(--kb-ease);
   white-space: nowrap;
@@ -334,14 +348,17 @@ select:focus-visible {
 .kb-seg-option[aria-selected="true"],
 .kb-seg-option[aria-checked="true"],
 .kb-seg-option[data-active="true"] { color: var(--kb-text); }
+/* Positioned from the chosen option's own box, so the pill is exactly as tall
+   and as wide as the thing it sits behind — no inset arithmetic to drift. */
 .kb-seg-pill {
   position: absolute;
-  top: 3px;
-  bottom: 3px;
+  left: 0;
+  top: 0;
   border-radius: var(--kb-r-pill);
   background: var(--kb-card);
   box-shadow: var(--kb-shadow-sm), 0 0 0 1px var(--kb-border);
-  transition: transform var(--kb-t-slow) var(--kb-ease-snap), width var(--kb-t-slow) var(--kb-ease-snap);
+  transition: transform var(--kb-t-slow) var(--kb-ease-snap), width var(--kb-t-slow) var(--kb-ease-snap),
+    height var(--kb-t-slow) var(--kb-ease-snap);
 }
 
 /* surfaces ------------------------------------------------------------- */
