@@ -26,8 +26,7 @@ app.get('/api/health', (_req, res) => {
  * `/api/health` stays a cheap liveness answer for the host's own health check.
  * This one catches the failure mode that is otherwise invisible until the
  * first user query: a missing, wrong or unreachable DATABASE_URL.
- * The budget covers a cold Neon wake-up; retry once before treating it as
- * down.
+ * The budget covers a cold Neon wake-up; the host's next probe is the retry.
  */
 const DB_PROBE_TIMEOUT_MS = 5000;
 app.get('/api/health/db', async (_req, res) => {
