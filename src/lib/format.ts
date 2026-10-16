@@ -82,6 +82,16 @@ export function dayLabel(iso: string, now: Date = new Date()): string {
   return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
 }
 
+/**
+ * Short, stable, human-readable id for a cuid, e.g. `#4FGH`.
+ *
+ * Cards carry it as their eyebrow so an id is something a person can say out
+ * loud in a standup, and both the card label and the drag announcements use it.
+ */
+export function shortId(id: string): string {
+  return `#${id.replace(/[^a-z0-9]/gi, '').slice(-4).toUpperCase()}`;
+}
+
 /** Full timestamp for the `title` tooltip, e.g. `Fri, Sep 26 · 18:04`. */
 export function absTime(iso: string): string {
   const d = new Date(iso);

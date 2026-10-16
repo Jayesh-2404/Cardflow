@@ -29,6 +29,8 @@
   --kb-text: oklch(0.15 0 0);
   --kb-muted: oklch(0.59 0 0);
   --kb-faint: oklch(0.72 0 0);
+  /* tag labels: quieter than the card title, louder than the id */
+  --kb-label: oklch(0.46 0 0);
   --kb-accent: #4f46e5;
   --kb-accent-hover: #4338ca;
   --kb-accent-soft: oklch(0.955 0.018 275);
@@ -84,6 +86,7 @@
   --kb-text: oklch(0.96 0 0);
   --kb-muted: oklch(0.64 0 0);
   --kb-faint: oklch(0.5 0 0);
+  --kb-label: oklch(0.77 0 0);
   --kb-accent: #7c74f5;
   --kb-accent-hover: #918af8;
   --kb-accent-soft: oklch(0.29 0.05 280);

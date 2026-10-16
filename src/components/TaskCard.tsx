@@ -1,7 +1,8 @@
+import { memo, useCallback } from 'react';
 import { useSortable } from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
+import { motion, useReducedMotion } from 'motion/react';
 import Icon from './Icon';
-import { dueMeta } from '../lib/format';
+import { dueMeta, shortId } from '../lib/format';
 import type { Task } from '../types';
 
 const PRIO_LABEL: Record<Task['priority'], string> = {
@@ -16,102 +17,147 @@ const PRIO_VAR: Record<Task['priority'], string> = {
   high: 'var(--kb-prio-high)',
 };
 
-interface Props {
-  task: Task;
-  entryCount: number;
-  onOpen: (t: Task) => void;
+/** Chart hues for tags, picked by name so a tag keeps its colour everywhere. */
+const TAG_HUES = [255, 25, 200, 150, 320, 60, 285, 185];
+
+function tagHue(tag: string): number {
+  let h = 0;
+  for (let i = 0; i < tag.length; i++) h = (h * 31 + tag.charCodeAt(i)) % 997;
+  return TAG_HUES[h % TAG_HUES.length];
 }
 
-export default function TaskCard({ task, entryCount, onOpen }: Props) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-    id: task.id,
-    // `type` lets the board tell a card drag from a list drag in one DndContext.
-    data: { type: 'card', columnId: task.columnId },
-  });
+/**
+ * How the board is drawing this card right now.
+ *
+ * `placeholder` is a pointer drag: the card itself is being drawn by the drag
+ * overlay, so the board keeps this node as the slot it will land in. `lifted`
+ * is a keyboard drag: there is no pointer to follow, so the card stays on
+ * screen and travels slot to slot. `settling` is the drop spring in flight,
+ * which still needs the card out of the way.
+ */
+export type CardDragState = 'idle' | 'placeholder' | 'lifted' | 'settling';
 
+export function cardLabel(task: Task, columnTitle: string, entryCount: number): string {
+  const parts = [`${task.title}, ${shortId(task.id)}`, `in ${columnTitle}`];
+  if (task.agentState === 'under-review') parts.push('under review');
+  else if (task.agentState === 'running') parts.push('agent running');
+  parts.push(`${PRIO_LABEL[task.priority]} priority`);
+  if (entryCount > 0) {
+    parts.push(`${entryCount} journal ${entryCount === 1 ? 'entry' : 'entries'}`);
+  }
+  return parts.join(', ');
+}
+
+/** The glide a neighbour makes when the slot moves. */
+export const CARD_SPRING = { type: 'spring' as const, stiffness: 380, damping: 34, mass: 0.9 };
+
+interface SurfaceProps {
+  task: Task;
+  entryCount: number;
+  /** Rendered in the drag overlay: lifted, and no hover affordances. */
+  overlay?: boolean;
+}
+
+/**
+ * The card's visual body, shared by the board copy and the drag overlay so the
+ * two can never drift apart.
+ */
+function CardSurface({ task, entryCount, overlay }: SurfaceProps) {
   const due = dueMeta(task.dueDate);
   const tags = task.tags.slice(0, 2);
 
   return (
     <div
-      ref={setNodeRef}
-      style={{ transform: CSS.Transform.toString(transform), transition }}
-      {...attributes}
-      {...listeners}
-      onClick={() => onOpen(task)}
-      data-testid="task-card"
-      data-task-id={task.id}
-      className={`group relative cursor-grab overflow-hidden rounded-[8px] border bg-[var(--kb-card)] pl-2.5 pr-2.5 py-2 transition-[border-color,box-shadow,transform,opacity] duration-150 active:cursor-grabbing ${
-        isDragging
-          ? 'border-[var(--kb-accent)] opacity-70'
-          : 'kb-border hover:border-[var(--kb-border-strong)] hover:shadow-[var(--kb-shadow-md)]'
+      className={`grid gap-2 rounded-[var(--kb-r-lg)] border bg-[var(--kb-card)] p-3 transition-[border-color,box-shadow] duration-150 ease-[var(--kb-ease)] ${
+        overlay
+          ? 'kb-border shadow-[var(--kb-shadow-lift)]'
+          : 'kb-border shadow-[var(--kb-shadow-sm)] group-hover:border-[var(--kb-border-strong)] group-hover:shadow-[var(--kb-shadow-md)]'
       }`}
     >
-      {/* priority rail: colour + shape both encode urgency, not colour alone */}
-      <span
-        aria-hidden
-        className="absolute inset-y-0 left-0 w-[3px]"
-        style={{ background: PRIO_VAR[task.priority] }}
-      />
-
-      <div className="flex items-center gap-1.5">
-        <span
-          className="font-mono-kb text-[10px] font-medium uppercase tracking-[0.07em]"
-          style={{ color: PRIO_VAR[task.priority] }}
-          title={`${PRIO_LABEL[task.priority]} priority`}
-        >
-          {PRIO_LABEL[task.priority]}
+      <div className="flex items-center justify-between gap-2">
+        <span className="font-mono-kb truncate text-[12px] leading-none text-kb-muted">
+          {shortId(task.id)}
         </span>
-        {tags.map((t) => (
-          <span key={t} className="kb-chip kb-sunken border-transparent">
-            {t}
+        {tags.length > 0 && (
+          <span className="flex shrink-0 items-center gap-2">
+            {tags.map((t) => (
+              <span
+                key={t}
+                className="flex items-center gap-[5px] text-[12px] leading-none text-kb-label"
+              >
+                <span
+                  aria-hidden
+                  className="h-1.5 w-1.5 shrink-0 rounded-full"
+                  style={{ background: `oklch(0.62 0.15 ${tagHue(t)})` }}
+                />
+                {t}
+              </span>
+            ))}
+            {task.tags.length > tags.length && (
+              <span className="font-mono-kb text-[11px] leading-none text-kb-faint">
+                +{task.tags.length - tags.length}
+              </span>
+            )}
           </span>
-        ))}
-        {task.tags.length > tags.length && (
-          <span className="font-mono-kb text-[10px] kb-faint">+{task.tags.length - tags.length}</span>
         )}
       </div>
 
-      <p className="mt-1 text-[13.5px] font-medium leading-[1.35] clamp-2">{task.title}</p>
+      <p className="clamp-2 text-[14px] font-medium leading-[1.4]">{task.title}</p>
 
-      <div className="mt-1.5 flex items-center gap-2">
+      <div className="flex min-h-[1.05rem] flex-wrap items-center gap-x-3 gap-y-1 text-[12px] leading-none text-kb-muted">
+        <span title={`${PRIO_LABEL[task.priority]} priority`} className="flex items-center gap-1.5">
+          <span
+            aria-hidden
+            className="h-1.5 w-1.5 shrink-0 rounded-full"
+            style={{ background: PRIO_VAR[task.priority] }}
+          />
+          {PRIO_LABEL[task.priority]}
+        </span>
+
         {due.tone !== 'none' && (
           <span
             title={due.title}
-            className="inline-flex items-center gap-1 font-mono-kb text-[10.5px] leading-none"
+            className="flex items-center gap-1.5"
             style={{
               color:
                 due.tone === 'overdue'
                   ? 'var(--kb-danger)'
                   : due.tone === 'today'
                     ? 'var(--kb-warn)'
-                    : 'var(--kb-faint)',
+                    : undefined,
             }}
           >
-            <Icon name="calendar" size={11} strokeWidth={2} />
+            <Icon name="calendar" size={13} />
             {due.label}
           </span>
         )}
+
         {task.description && (
-          <span title="Has details" className="text-kb-faint">
-            <Icon name="note" size={11} strokeWidth={2} />
+          <span title="Has details" className="flex items-center text-kb-faint">
+            <Icon name="note" size={13} />
           </span>
         )}
+
         {entryCount > 0 && (
           <span
             title={`${entryCount} journal ${entryCount === 1 ? 'entry' : 'entries'}`}
             data-testid="entry-count"
-            className="inline-flex items-center gap-0.5 font-mono-kb text-[10.5px] leading-none text-kb-faint"
+            className="flex items-center gap-1.5"
           >
-            <Icon name="clock" size={11} strokeWidth={2} />
+            <Icon name="journal" size={13} />
             {entryCount}
           </span>
         )}
+
         {task.agentState !== 'idle' && (
           <span
-            title={task.branch ? `Agent: ${task.agentState} on ${task.branch}` : `Agent: ${task.agentState}`}
+            title={
+              task.branch
+                ? `Agent: ${task.agentState} on ${task.branch}`
+                : `Agent: ${task.agentState}`
+            }
             data-testid="agent-badge"
-            className="kb-chip font-mono-kb inline-flex items-center gap-1 text-[10px] leading-none"
+            className="kb-chip !py-0.5 !text-[11px]"
           >
             <span
               aria-hidden
@@ -125,7 +171,11 @@ export default function TaskCard({ task, entryCount, onOpen }: Props) {
                       : 'var(--kb-ok)',
               }}
             />
-            {task.agentState === 'under-review' ? 'Review' : task.agentState === 'running' ? 'Running' : 'Done'}
+            {task.agentState === 'under-review'
+              ? 'Review'
+              : task.agentState === 'running'
+                ? 'Running'
+                : 'Done'}
             {task.projectKey && <span className="opacity-70">{task.projectKey}</span>}
           </span>
         )}
@@ -133,3 +183,90 @@ export default function TaskCard({ task, entryCount, onOpen }: Props) {
     </div>
   );
 }
+
+export function TaskCardOverlay({ task, entryCount }: { task: Task; entryCount: number }) {
+  return <CardSurface task={task} entryCount={entryCount} overlay />;
+}
+
+interface Props {
+  task: Task;
+  entryCount: number;
+  columnTitle: string;
+  onOpen: (t: Task) => void;
+  dragState?: CardDragState;
+}
+
+function TaskCard({ task, entryCount, columnTitle, onOpen, dragState = 'idle' }: Props) {
+  const reduced = useReducedMotion();
+  const { attributes, listeners, setNodeRef, isDragging } = useSortable({
+    id: task.id,
+    // `type` lets the board tell a card drag from a list drag in one DndContext.
+    data: { type: 'card', columnId: task.columnId },
+  });
+
+  const lifted = dragState === 'lifted';
+  // Drawn by the overlay, or by the drop spring that is still travelling: this
+  // node is only the slot either way.
+  const away = dragState === 'placeholder' || dragState === 'settling';
+
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      // dnd-kit's KeyboardSensor is the activator on this node: Space lifts the
+      // card, and Space or Enter drops it. It has to see every key first.
+      listeners?.onKeyDown?.(e);
+
+      // While a drag is live, Enter is the drop key and the sensor owns it.
+      if (e.key !== 'Enter' || isDragging) return;
+      e.preventDefault();
+      onOpen(task);
+    },
+    [isDragging, listeners, onOpen, task],
+  );
+
+  return (
+    <motion.div
+      ref={setNodeRef}
+      // Cards open their slot by reordering, so the DOM order is the board order
+      // and motion's layout spring is what moves a neighbour. The card that has
+      // left the board must not glide: its slot is where the card lands, not a
+      // journey, and gliding it would drag the slot outline along with it.
+      layout={reduced || away ? false : 'position'}
+      transition={CARD_SPRING}
+      animate={{ scale: lifted ? 1.02 : 1 }}
+      {...attributes}
+      {...listeners}
+      onKeyDown={handleKeyDown}
+      onClick={() => onOpen(task)}
+      role="button"
+      aria-roledescription="Draggable card"
+      aria-label={cardLabel(task, columnTitle, entryCount)}
+      data-testid="task-card"
+      data-task-id={task.id}
+      data-column-id={task.columnId}
+      data-drag-state={dragState === 'idle' ? undefined : dragState}
+      className={`group relative block w-full cursor-grab rounded-[var(--kb-r-lg)] text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--kb-accent)] ${
+        lifted ? 'z-10 cursor-grabbing' : 'active:cursor-grabbing'
+      }`}
+    >
+      {/* The card itself stays mounted so the slot keeps the exact height of the
+          card that will land in it, and the drop target never shifts. */}
+      <div className={away ? 'invisible' : ''}>
+        <CardSurface task={task} entryCount={entryCount} overlay={lifted} />
+      </div>
+      {away && (
+        <span
+          aria-hidden
+          data-testid="card-slot"
+          className="pointer-events-none absolute inset-0 rounded-[var(--kb-r-lg)] border border-dashed border-[var(--kb-border-strong)] bg-[color-mix(in_srgb,var(--kb-card)_55%,transparent)]"
+        />
+      )}
+    </motion.div>
+  );
+}
+
+/*
+  Memoised on purpose: during a drag only the overlay and the cards whose slot
+  changed should re-render. The board passes stable callbacks, so a card whose
+  props are unchanged is skipped entirely.
+*/
+export default memo(TaskCard);
