@@ -67,6 +67,6 @@ app.use(
 );
 
 app.listen(env.port, () => {
-  console.log(`kanban-server on :${env.port} (frontend: ${env.frontendOrigin})`);
+  console.log(`cardflow-server on :${env.port} (frontend: ${env.frontendOrigin})`);
   warmDatabase();
 });

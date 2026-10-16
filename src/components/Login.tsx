@@ -69,7 +69,7 @@ export default function Login({ onAuthed }: { onAuthed: (email: string, board: B
           <span className="kb-accent grid h-7 w-7 place-items-center rounded-[7px] kb-accent-soft">
             <Icon name="columns" size={15} />
           </span>
-          <h1 className="text-[15px] font-semibold tracking-[-0.01em]">My Board</h1>
+          <h1 className="text-[15px] font-semibold tracking-[-0.01em]">Cardflow</h1>
         </div>
         <p className="mt-1.5 text-[12.5px] text-kb-muted">
           {mode === 'login' ? 'Log in to your board.' : 'Create your account.'}

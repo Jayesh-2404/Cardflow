@@ -1,4 +1,4 @@
-# Deploying My Board
+# Deploying Cardflow
 
 Everything repo-side is committed; this runbook covers the account-side steps. A fresh
 deploy is three pieces and takes about 30 minutes:

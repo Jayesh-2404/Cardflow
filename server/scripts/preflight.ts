@@ -20,7 +20,7 @@ const dev = process.argv.includes('--dev');
 const prod = !dev;
 
 console.log(
-  `kanban-server preflight (${prod ? 'production' : 'development'} rules, node ${process.version})`,
+  `cardflow-server preflight (${prod ? 'production' : 'development'} rules, node ${process.version})`,
 );
 const envFile = join(process.cwd(), '.env');
 console.log(existsSync(envFile) ? `loaded env file: ${envFile}` : 'no server/.env found; checking process environment only');

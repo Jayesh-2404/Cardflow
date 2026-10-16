@@ -17,7 +17,7 @@ const Header = forwardRef<HTMLInputElement, Props>(function Header(props, search
   return (
     <header className="z-20 flex shrink-0 flex-wrap items-center gap-2 border-b kb-border bg-[var(--kb-card)] px-3 py-2 sm:h-13 sm:flex-nowrap sm:gap-2.5 sm:px-4">
       <h1 className="order-1 shrink-0 text-[13px] font-semibold tracking-[-0.01em]">
-        My Board
+        Cardflow
       </h1>
       <span
         data-testid="live-status"
