@@ -1148,15 +1148,18 @@ export default function App() {
           }
           archiveList={
             archived.length === 0 ? (
-              <p className="text-[12.5px] text-kb-faint">Nothing archived.</p>
+              <p className="text-[12.5px] text-kb-muted">Nothing archived.</p>
             ) : (
               archived.map((t) => (
-                <div key={t.id} className="kb-panel p-2.5">
-                  <p className="clamp-2 text-[12.5px] font-medium">{t.title}</p>
-                  <div className="mt-2 flex gap-1.5">
+                <div
+                  key={t.id}
+                  className="kb-panel-inset rounded-[var(--kb-r-lg)] p-3"
+                >
+                  <p className="clamp-2 text-[13px] font-medium">{t.title}</p>
+                  <div className="mt-2.5 flex gap-1.5">
                     <button
                       onClick={() => void commit(api.updateTask(t.id, { archived: false }))}
-                      className="kb-btn h-6 px-2 text-[11.5px]"
+                      className="kb-btn kb-btn-outline h-7 px-2.5 text-[12px]"
                     >
                       <Icon name="undo" size={12} />
                       Restore
@@ -1165,7 +1168,7 @@ export default function App() {
                       onClick={() => {
                         if (window.confirm('Delete permanently?')) void commit(api.deleteTask(t.id));
                       }}
-                      className="kb-btn kb-btn-danger h-6 px-2 text-[11.5px]"
+                      className="kb-btn kb-btn-danger h-7 px-2.5 text-[12px]"
                     >
                       <Icon name="trash" size={12} />
                       Delete
