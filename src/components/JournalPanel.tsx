@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import Icon, { type IconName } from './Icon';
+import Segmented from './Segmented';
 import { absTime, dayLabel, relTime } from '../lib/format';
 import type { EventType, JournalEvent } from '../lib/api';
 
@@ -70,52 +71,46 @@ export default function JournalPanel({ events, onOpenTask, onRefresh, onDelete, 
 
   return (
     <div data-testid="journal-panel">
-      <div className="mb-2.5 flex items-center gap-1">
-        {FILTERS.map((f) => (
-          <button
-            key={f.id}
-            onClick={() => setFilter(f.id)}
-            data-testid={`journal-filter-${f.id}`}
-            className={`rounded-full border px-2 py-0.5 text-[11px] transition-colors duration-100 ${
-              filter === f.id
-                ? 'kb-accent-bg border-transparent'
-                : 'kb-border text-kb-muted hover:border-[var(--kb-border-strong)]'
-            }`}
-          >
-            {f.label}
-          </button>
-        ))}
+      <div className="mb-3 flex items-center gap-1.5">
+        <Segmented
+          value={filter}
+          options={FILTERS.map((f) => ({ value: f.id, label: f.label }))}
+          onChange={setFilter}
+          aria-label="Journal filter"
+          data-testid="journal-filter"
+          className="min-w-0 flex-1"
+        />
         <button
           onClick={onRefresh}
           title="Refresh journal"
           aria-label="Refresh journal"
           data-testid="journal-refresh"
-          className="ml-auto grid h-6 w-6 place-items-center rounded-[5px] text-kb-faint transition-colors duration-100 hover:bg-[var(--kb-sunken)] hover:text-kb-text"
+          className="kb-focus grid h-[30px] w-[30px] shrink-0 place-items-center rounded-full text-kb-muted transition-colors duration-100 hover:bg-[var(--kb-sunken)] hover:text-kb-text"
         >
-          <Icon name="undo" size={13} />
+          <Icon name="undo" size={15} />
         </button>
       </div>
 
-      <p className="font-mono-kb mb-2.5 text-[10.5px] text-kb-faint">
+      <p className="mb-3 text-[12px] text-kb-muted">
         {events.length} entries · {noteCount} written by you
       </p>
 
       {onPrune && (
-        <div className="kb-panel-inset mb-2.5 flex items-center gap-1.5 p-1.5">
+        <div className="kb-panel-inset mb-3 flex items-center gap-1.5 rounded-[var(--kb-r-control)] p-1.5">
           <input
             type="date"
             value={pruneBefore}
             onChange={(e) => setPruneBefore(e.target.value)}
             aria-label="Delete entries older than date"
             data-testid="journal-prune-date"
-            className="font-mono-kb min-w-0 flex-1 bg-transparent text-[11.5px] text-kb-muted outline-none"
+            className="font-mono-kb min-w-0 flex-1 bg-transparent pl-1.5 text-[12px] text-kb-muted outline-none"
           />
           <button
             onClick={() => pruneBefore && onPrune(pruneBefore)}
             disabled={!pruneBefore || pruneBusy}
             data-testid="journal-prune"
             title="Delete entries older than this date"
-            className="kb-btn h-6 shrink-0 px-2 text-[11px]"
+            className="kb-btn kb-btn-outline h-7 shrink-0 px-2.5 text-[12px]"
           >
             {pruneBusy ? 'Deleting…' : 'Delete older'}
           </button>
@@ -123,7 +118,7 @@ export default function JournalPanel({ events, onOpenTask, onRefresh, onDelete, 
       )}
 
       {visible.length === 0 ? (
-        <p className="py-8 text-center text-[12.5px] text-kb-faint" data-testid="journal-empty">
+        <p className="py-10 text-center text-[12.5px] text-kb-muted" data-testid="journal-empty">
           {events.length === 0
             ? 'Nothing journalled yet. Open a card and log your first entry.'
             : 'No entries match this filter.'}
@@ -131,8 +126,8 @@ export default function JournalPanel({ events, onOpenTask, onRefresh, onDelete, 
       ) : (
         <div data-testid="journal-list">
           {groups.map((g) => (
-            <section key={g.day} className="mb-3">
-              <h4 className="font-mono-kb sticky top-0 z-10 mb-1 bg-[var(--kb-card)] py-0.5 text-[10px] font-medium uppercase tracking-[0.08em] text-kb-faint">
+            <section key={g.day} className="mb-4">
+              <h4 className="sticky top-0 z-10 mb-1.5 bg-[var(--kb-card)] py-1 text-[12px] font-medium text-kb-muted">
                 {g.label}
               </h4>
               <ul>
@@ -146,17 +141,17 @@ export default function JournalPanel({ events, onOpenTask, onRefresh, onDelete, 
                       role="button"
                       tabIndex={0}
                       data-testid="journal-item"
-                      className="group flex w-full cursor-pointer gap-2 rounded-[6px] px-1.5 py-1.5 text-left transition-colors duration-100 hover:bg-[var(--kb-sunken)]"
+                      className="group flex w-full cursor-pointer gap-2.5 rounded-[var(--kb-r-sm)] px-2 py-2 text-left transition-colors duration-100 hover:bg-[var(--kb-sunken)]"
                     >
                       <span className="mt-0.5 shrink-0 text-kb-faint">
-                        <Icon name={EVENT_ICON[e.type]} size={12} strokeWidth={2} />
+                        <Icon name={EVENT_ICON[e.type]} size={14} strokeWidth={2} />
                       </span>
                       <span className="min-w-0 flex-1">
-                        <span className="block truncate text-[12.5px] font-medium leading-snug group-hover:text-kb-accent">
+                        <span className="block truncate text-[13px] font-medium leading-snug group-hover:text-kb-accent">
                           {e.taskTitle}
                         </span>
                         <span
-                          className={`block text-[11.5px] leading-snug text-kb-muted ${
+                          className={`block text-[12px] leading-snug text-kb-muted ${
                             e.type === 'note' ? '' : 'clamp-1'
                           }`}
                         >
@@ -166,7 +161,7 @@ export default function JournalPanel({ events, onOpenTask, onRefresh, onDelete, 
                       <time
                         dateTime={e.createdAt}
                         title={absTime(e.createdAt)}
-                        className="font-mono-kb mt-px shrink-0 text-[10px] text-kb-faint"
+                        className="font-mono-kb mt-px shrink-0 text-[11px] text-kb-faint"
                       >
                         {relTime(e.createdAt)}
                       </time>
@@ -179,9 +174,9 @@ export default function JournalPanel({ events, onOpenTask, onRefresh, onDelete, 
                           title="Delete this entry"
                           aria-label="Delete journal entry"
                           data-testid="journal-delete"
-                          className="grid h-5 w-5 shrink-0 place-items-center self-center rounded-[4px] text-kb-faint opacity-0 transition-opacity duration-100 hover:bg-[var(--kb-danger-soft)] hover:text-kb-danger focus-visible:opacity-100 group-hover:opacity-100"
+                          className="grid h-6 w-6 shrink-0 place-items-center self-center rounded-full text-kb-faint opacity-0 transition-opacity duration-100 hover:bg-[var(--kb-danger-soft)] hover:text-kb-danger focus-visible:opacity-100 group-hover:opacity-100"
                         >
-                          <Icon name="trash" size={11} />
+                          <Icon name="trash" size={12} />
                         </button>
                       )}
                     </div>
@@ -195,7 +190,7 @@ export default function JournalPanel({ events, onOpenTask, onRefresh, onDelete, 
             <button
               onClick={() => setLimit((n) => n + 40)}
               data-testid="journal-more"
-              className="kb-btn w-full"
+              className="kb-btn kb-btn-outline h-9 w-full text-[13px]"
             >
               Show {Math.min(40, visible.length - limit)} older entries
             </button>
