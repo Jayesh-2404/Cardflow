@@ -172,17 +172,18 @@ export default function CommandPalette(props: Props) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center px-4 pt-[12vh]">
-      <div className="absolute inset-0 bg-black/30" onClick={props.onClose} data-testid="palette-scrim" />
+    <div className="fixed inset-0 z-50 flex items-start justify-center px-4 pt-[10vh]">
+      <div className="absolute inset-0 bg-black/25" onClick={props.onClose} data-testid="palette-scrim" />
+      {/* The drawer's shell one size down: a borderless card in the two-stop shadow. */}
       <div
         role="dialog"
         aria-modal="true"
         aria-label="Command palette"
         data-testid="command-palette"
-        className="kb-pop-in relative flex max-h-[70vh] w-full max-w-lg flex-col overflow-hidden rounded-[10px] border kb-border bg-[var(--kb-card)] shadow-[var(--kb-shadow-lg)]"
+        className="kb-pop-in relative flex max-h-[70vh] w-full max-w-[32rem] flex-col overflow-hidden rounded-[var(--kb-r-2xl)] bg-[var(--kb-card)] shadow-[var(--kb-shadow-drawer)]"
       >
-        <div className="flex shrink-0 items-center gap-2 border-b kb-border px-3 py-2.5">
-          <span className="text-kb-faint">
+        <div className="flex shrink-0 items-center gap-2.5 px-4 py-3">
+          <span className="text-kb-muted">
             <Icon name="search" size={15} />
           </span>
           <input
@@ -207,22 +208,23 @@ export default function CommandPalette(props: Props) {
             placeholder="Search tasks or run a command…"
             aria-label="Search tasks or run a command"
             data-testid="palette-input"
-            className="flex-1 bg-transparent text-[13.5px] outline-none placeholder:text-kb-faint"
+            className="flex-1 bg-transparent text-[14px] outline-none placeholder:text-kb-muted"
           />
           <kbd className="kb-kbd">Esc</kbd>
         </div>
 
-        <div ref={listRef} className="kb-scroll min-h-0 flex-1 overflow-y-auto p-1.5">
+        <div
+          ref={listRef}
+          className="kb-scroll min-h-0 flex-1 overflow-y-auto border-t kb-border p-2"
+        >
           {flat.length === 0 ? (
-            <p className="px-2 py-6 text-center text-[12.5px] text-kb-faint" data-testid="palette-empty">
+            <p className="px-2 py-10 text-center text-[12.5px] text-kb-muted" data-testid="palette-empty">
               No matches for “{query.trim()}”.
             </p>
           ) : (
             results.map((g) => (
-              <div key={g.group} className="mb-1 last:mb-0">
-                <p className="font-mono-kb px-1.5 pb-1 pt-1.5 text-[9.5px] font-medium uppercase tracking-[0.09em] text-kb-faint">
-                  {g.group}
-                </p>
+              <div key={g.group} className="mb-1.5 last:mb-0">
+                <p className="px-2 pb-1 pt-2 text-[11px] font-medium text-kb-muted">{g.group}</p>
                 {g.items.map((c) => {
                   const index = flat.indexOf(c);
                   return (
@@ -232,14 +234,14 @@ export default function CommandPalette(props: Props) {
                       data-testid="palette-item"
                       onMouseEnter={() => setActive(index)}
                       onClick={() => choose(index)}
-                      className={`flex w-full items-center gap-2.5 rounded-[6px] px-1.5 py-1.5 text-left text-[13px] transition-colors duration-75 ${
+                      className={`flex w-full items-center gap-2.5 rounded-[var(--kb-r-sm)] px-2 py-2 text-left text-[13px] transition-colors duration-75 ${
                         index === active
                           ? 'kb-accent-soft text-kb-text'
                           : 'text-kb-muted hover:bg-[var(--kb-sunken)]'
                       }`}
                     >
                       <span className={index === active ? 'kb-accent' : 'text-kb-faint'}>
-                        <Icon name={c.icon} size={14} />
+                        <Icon name={c.icon} size={15} />
                       </span>
                       <span className="min-w-0 flex-1 truncate">{c.label}</span>
                       {c.hint && <kbd className="kb-kbd">{c.hint}</kbd>}
@@ -251,7 +253,7 @@ export default function CommandPalette(props: Props) {
           )}
         </div>
 
-        <div className="flex shrink-0 items-center gap-3 border-t kb-border px-3 py-1.5 text-[10.5px] text-kb-faint">
+        <div className="flex shrink-0 items-center gap-3 border-t kb-border px-4 py-2 text-[11px] text-kb-muted">
           <span className="flex items-center gap-1">
             <kbd className="kb-kbd">↑</kbd>
             <kbd className="kb-kbd">↓</kbd> navigate
@@ -259,7 +261,7 @@ export default function CommandPalette(props: Props) {
           <span className="flex items-center gap-1">
             <kbd className="kb-kbd">↵</kbd> run
           </span>
-          <span className="ml-auto font-mono-kb">
+          <span className="font-mono-kb ml-auto">
             {flat.length} {flat.length === 1 ? 'result' : 'results'}
           </span>
         </div>
