@@ -87,7 +87,6 @@
   --kb-shadow-sm: 0 1px 2px oklch(0 0 0 / 0.035);
   --kb-shadow-md: 0 2px 6px -1px oklch(0 0 0 / 0.07), 0 1px 2px oklch(0 0 0 / 0.035);
   --kb-shadow-lift: 0 24px 48px -12px oklch(0 0 0 / 0.18), 0 6px 16px -6px oklch(0 0 0 / 0.1);
-  --kb-shadow-lg: 0 24px 48px -12px oklch(0 0 0 / 0.18), 0 6px 16px -6px oklch(0 0 0 / 0.1);
   --kb-shadow-drawer: 0 20px 48px oklch(0 0 0 / 0.105), 0 3px 10px oklch(0 0 0 / 0.045);
   /* radii */
   --kb-r-xs: 6px;
@@ -99,16 +98,12 @@
   /* drawer property controls: a 36px field with this radius */
   --kb-r-control: 18px;
   --kb-r-pill: 9999px;
-  /* motion: two curves, both spring-shaped, plus plain durations */
-  --kb-t-instant: 90ms;
+  /* motion: plain durations for state changes, one spring curve for slides */
   --kb-t-fast: 140ms;
   --kb-t: 200ms;
   --kb-t-slow: 320ms;
   --kb-ease: cubic-bezier(0.2, 0, 0.2, 1);
-  --kb-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
-  --kb-ease-glide: linear(0 0%, 0.069 3.85%, 0.196 7.69%, 0.342 11.54%, 0.482 15.38%, 0.607 19.23%, 0.711 23.08%, 0.793 26.92%, 0.857 30.77%, 0.905 34.62%, 0.939 38.46%, 0.963 42.31%, 0.979 46.15%, 0.989 50%, 0.997 53.85%, 1 57.69%, 1.002 61.54%, 1.003 65.38%, 1.003 69.23%, 1.003 73.08%, 1.002 76.92%, 1.002 80.77%, 1.002 84.62%, 1.001 88.46%, 1.001 92.31%, 1.001 96.15%, 1 100%);
   --kb-ease-snap: linear(0 0%, 0.098 4.55%, 0.267 9.09%, 0.449 13.64%, 0.613 18.18%, 0.747 22.73%, 0.847 27.27%, 0.917 31.82%, 0.967 36.36%, 0.993 40.91%, 1.007 45.45%, 1.013 50%, 1.014 54.55%, 1.013 59.09%, 1.01 63.64%, 1.008 68.18%, 1.005 72.73%, 1.003 77.27%, 1.002 81.82%, 1.001 86.36%, 1 90.91%, 1 95.45%, 1 100%);
-  --kb-dur-glide: 546ms;
   --kb-dur-snap: 419ms;
   /* type */
   --kb-lh: 1.4;
@@ -144,10 +139,9 @@
   --kb-shadow-sm: 0 1px 2px oklch(0 0 0 / 0.18);
   --kb-shadow-md: 0 2px 6px -1px oklch(0 0 0 / 0.4), 0 1px 2px oklch(0 0 0 / 0.3);
   --kb-shadow-lift: 0 24px 48px -12px oklch(0 0 0 / 0.6), 0 6px 16px -6px oklch(0 0 0 / 0.4);
-  --kb-shadow-lg: 0 24px 48px -12px oklch(0 0 0 / 0.6), 0 6px 16px -6px oklch(0 0 0 / 0.4);
   --kb-shadow-drawer: 0 20px 48px oklch(0 0 0 / 0.5), 0 3px 10px oklch(0 0 0 / 0.3);
   color-scheme: dark;
-  }
+}
 }
 
 @layer base {
