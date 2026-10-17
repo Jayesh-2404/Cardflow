@@ -50,17 +50,6 @@ async function login(page: Page): Promise<void> {
 const rowOf = (page: Page, type: string) =>
   page.locator(`[data-testid=timeline-row][data-type=${type}]`);
 
-/**
- * Mobile renders one list at a time behind tabs, so a test that needs a card
- * in a specific list has to switch to it first. No-op on desktop.
- */
-async function showList(page: Page, name: string): Promise<void> {
-  const tab = page.locator('[data-testid=mobile-tab]', { hasText: name }).first();
-  if (await tab.isVisible().catch(() => false)) {
-    await tab.click();
-  }
-}
-
 test.beforeEach(async ({ page, request }) => {
   await login(page);
   await resetBoard(request, page);
@@ -112,10 +101,10 @@ test.describe('board', () => {
 
   test('moving a card to another list is journalled with both list names', async ({ page }) => {
     await card(page, 'Welcome — drag me to Doing').click();
-    await page.getByTestId('editor-column').selectOption({ label: 'Doing' });
+    // The list picker is a radiogroup of list names, not a select.
+    await page.getByTestId('editor-column').getByRole('radio', { name: 'Doing' }).click();
     await page.getByTestId('editor-save').click();
 
-    await showList(page, 'Doing');
     await card(page, 'Welcome — drag me to Doing').click();
     await expect(rowOf(page, 'moved')).toContainText('Todo');
     await expect(rowOf(page, 'moved')).toContainText('Doing');
@@ -141,7 +130,7 @@ test.describe('journal panel', () => {
     await page.getByTestId('rail-journal').click();
     await expect(page.getByTestId('journal-panel')).toContainText('Only a note in this feed.');
 
-    await page.getByTestId('journal-filter-note').click();
+    await page.getByTestId('journal-filter').getByRole('radio', { name: 'Notes' }).click();
     await expect(page.getByTestId('journal-item')).toHaveCount(1);
   });
 

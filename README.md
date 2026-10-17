@@ -59,10 +59,13 @@ The data model, auth design, and agent rules are in [docs/ARCHITECTURE.md](docs/
 | `J`            | Journal panel                                 |
 | `1`–`9`        | Jump to the nth list                          |
 | `/`            | Focus the card filter                         |
-| `Enter`        | Log a journal entry / add a card              |
+| `Enter`        | Open the focused card / log a journal entry / add a card |
 | `Shift+Enter`  | New line inside a journal entry               |
 | `Ctrl/Cmd+Enter` | Save the open task                          |
-| `Esc`          | Close the palette, editor, or panel, then clear the search |
+| `Space`        | Lift the focused card to move it by keyboard  |
+| `Arrows`       | While lifted: move it a slot at a time, left and right between lists |
+| `Space`/`Enter`/`Tab` | While lifted: drop it where it is      |
+| `Esc`          | While lifted: put it back; otherwise close the palette, editor, or panel, then clear the search |
 
 ## Tests
 
