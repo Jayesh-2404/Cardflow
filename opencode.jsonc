@@ -4,11 +4,17 @@
     "servers": {
       "kanban": {
         "type": "local",
-        // Run from the kanban-board root. Auth comes from server/.env
-        // (KANBAN_USER_ID for local single-user, or KANBAN_TOKEN).
+        // Runs the built server from server/dist. Measured: ~0.4-2s to
+        // answer initialize, versus 5-45s for the old `npx tsx` source path,
+        // which tripped OpenCode's connect timeout ("mcp connect failed:
+        // Request timed out"). After editing server/src, rebuild with:
+        //   cd server && node node_modules\typescript\bin\tsc -p tsconfig.json
+        // (plain `npm run build` also runs prisma generate, which fails with
+        // EPERM on Windows while a running MCP holds the engine file).
+        // Auth comes from server/.env (KANBAN_USER_ID local, or KANBAN_TOKEN).
         // Override per-launch with: "environment": { "KANBAN_USER_ID": "..." }
-        // Optional: "enabled": false, "timeout": 10000 (ms, default 5000).
-        "command": ["npx", "tsx", "server/src/mcp.ts"]
+        "command": ["node", "server/dist/mcp.js"],
+        "timeout": 20000
       }
     }
   },
