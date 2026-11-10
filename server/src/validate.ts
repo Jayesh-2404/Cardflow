@@ -4,6 +4,7 @@ const AGENT_STATES = new Set(['idle', 'running', 'under-review', 'completed']);
 const PROJECT_KEY_RE = /^[a-z0-9][a-z0-9-_]{0,63}$/;
 const BRANCH_RE = /^[A-Za-z0-9/_.-]{1,128}$/;
 const COMMIT_RE = /^[0-9a-f]{7,40}$/i;
+const ROOT_RE = /^(?:[A-Za-z]:[\\/]|\\\\|\/)/;
 
 export function validEmail(v: unknown): v is string {
   return typeof v === 'string' && EMAIL_RE.test(v.trim()) && v.length <= 254;
@@ -39,6 +40,31 @@ export function validBranch(v: unknown): v is string {
 
 export function validCommit(v: unknown): v is string {
   return typeof v === 'string' && COMMIT_RE.test(v);
+}
+
+/** A GitHub/GitLab PR URL, not a file path or a javascript: URI. */
+export function validPrUrl(v: unknown): v is string {
+  if (typeof v !== 'string' || v.length > 500) return false;
+  try {
+    const url = new URL(v);
+    return url.protocol === 'https:' || url.protocol === 'http:';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * A checkout path on the machine that runs the agent. The API host may be a
+ * different OS, so this accepts Windows drive/UNC paths and POSIX paths rather
+ * than asking `path.isAbsolute`. The MCP checks existence where it matters.
+ */
+export function cleanRootPath(v: unknown): string | null {
+  if (typeof v !== 'string') return null;
+  const s = v.trim();
+  if (!s || s.length > 500) return null;
+  if (!ROOT_RE.test(s)) return null;
+  if (s.split(/[\\/]+/).includes('..')) return null;
+  return s;
 }
 
 export function cleanTags(v: unknown): string[] {

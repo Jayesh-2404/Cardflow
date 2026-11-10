@@ -11,7 +11,27 @@ import type { BoardColumnDTO, BoardTaskDTO } from './board';
 /** Due dates are stored and compared as plain yyyy-mm-dd in the owner's local day. */
 export const DEFAULT_TZ = 'Asia/Kolkata';
 
-const RANK: Record<string, number> = { high: 0, medium: 1, low: 2 };
+export const PRIORITY_RANK: Record<string, number> = { high: 0, medium: 1, low: 2 };
+
+/** `kanban/<id tail>-<title slug>`, short enough for every git host. */
+export function branchFor(task: { id: string; title: string }): string {
+  const slug =
+    task.title
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 32) || 'task';
+  return `kanban/${task.id.slice(-6)}-${slug}`;
+}
+
+/** Compact human duration for journal summaries and the agent badge. */
+export function runDuration(ms: number): string {
+  const minutes = Math.round(ms / 60_000);
+  if (minutes < 1) return `${Math.max(1, Math.round(ms / 1000))}s`;
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  return `${hours}h ${String(minutes % 60).padStart(2, '0')}m`;
+}
 
 /**
  * yyyy-mm-dd for `now` in `tz`.
@@ -85,6 +105,36 @@ export function selectOpenTasks({
         (!project || t.projectKey === project) &&
         !done.has(t.columnId),
     )
-    .sort((a, b) => (RANK[a.priority] ?? 1) - (RANK[b.priority] ?? 1))
+    .sort((a, b) => (PRIORITY_RANK[a.priority] ?? 1) - (PRIORITY_RANK[b.priority] ?? 1))
     .slice(0, limit);
+}
+
+/** Dates are yyyy-mm-dd; an undated card is the least urgent tiebreak. */
+function dueRank(dueDate: string | null): number {
+  if (!dueDate) return Number.MAX_SAFE_INTEGER;
+  const t = Date.parse(`${dueDate}T00:00:00.000Z`);
+  return Number.isNaN(t) ? Number.MAX_SAFE_INTEGER : t;
+}
+
+/**
+ * The picker behind `pick_task`: unclaimed cards in Todo, in the order an agent
+ * should take them. Priority wins, then the due date (overdue first, undated
+ * last). The board query already ordered by position, and JS sort is stable, so
+ * cards that tie keep the user's manual order.
+ *
+ * `agentState` is derived from the latest run, so an idle card is one no other
+ * agent currently holds.
+ */
+export function rankOpenTasks(
+  tasks: BoardTaskDTO[],
+  columns: BoardColumnDTO[],
+): BoardTaskDTO[] {
+  const todo = new Set(columns.filter((c) => c.kind === 'todo').map((c) => c.id));
+  return tasks
+    .filter((t) => !t.archived && t.agentState === 'idle' && todo.has(t.columnId))
+    .sort(
+      (a, b) =>
+        (PRIORITY_RANK[a.priority] ?? 1) - (PRIORITY_RANK[b.priority] ?? 1) ||
+        dueRank(a.dueDate) - dueRank(b.dueDate),
+    );
 }

@@ -16,6 +16,7 @@ model User {
   columns      Column[]
   tasks        Task[]
   runs         TaskRun[]
+  projects     Project[]
   sessions     Session[]
 }
 
@@ -112,6 +113,26 @@ model TaskRun {
 
   @@index([userId, status])
   @@index([taskId, startedAt])
+}
+
+/*
+  A project key points at a checkout on the machine that runs the agent. The
+  path lives in the database so it can be edited from the board, but it is only
+  meaningful on the agent's host; an MCP-local project-roots.json still wins
+  when the same board is used from two computers.
+*/
+model Project {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  key       String
+  name      String   @default("")
+  rootPath  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, key])
+  @@index([userId])
 }
 
 /*
