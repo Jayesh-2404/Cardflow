@@ -15,7 +15,7 @@ import { join } from 'node:path';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
-import type { BoardDTO } from './board';
+import type { BoardDTO, BoardTaskDTO } from './board';
 import { selectOpenTasks, todayInTz } from './mcp-filters';
 
 // OpenCode spawns us from the board root; our .env lives next to this package.
@@ -82,7 +82,7 @@ function rootsFile(): string {
   return join(__dirname, '..', 'project-roots.json');
 }
 
-function readRoots(): Record<string, string> {
+function readLocalRoots(): Record<string, string> {
   try {
     if (!existsSync(rootsFile())) return {};
     const map = JSON.parse(readFileSync(rootsFile(), 'utf8')) as Record<string, string>;
@@ -92,35 +92,70 @@ function readRoots(): Record<string, string> {
   }
 }
 
-function projectRoot(projectKey: string): string | null {
-  if (!projectKey) return null;
-  const map = readRoots();
-  return typeof map[projectKey] === 'string' ? map[projectKey] : null;
+interface BoardProject {
+  key: string;
+  name: string;
+  rootPath: string;
 }
 
-interface RootHealth {
+async function readBoardProjects(): Promise<BoardProject[]> {
+  try {
+    const body = await request<{ projects: BoardProject[] }>('/api/mcp/projects');
+    return body.projects;
+  } catch {
+    return [];
+  }
+}
+
+interface RootInfo {
   key: string;
   path: string;
+  source: 'board' | 'local';
   exists: boolean;
   directory: boolean;
   git: boolean;
 }
 
-/** The local half of board_health: paths only this machine can check. */
-function rootHealth(): RootHealth[] {
-  return Object.entries(readRoots())
+/**
+ * One list of roots for this machine. The board's Projects panel is the shared
+ * default; project-roots.json is a local override so two laptops can point the
+ * same project key at different checkouts.
+ */
+async function availableRoots(): Promise<RootInfo[]> {
+  const merged = new Map<string, { path: string; source: 'board' | 'local' }>();
+  for (const project of await readBoardProjects()) {
+    if (project.key && project.rootPath) {
+      merged.set(project.key, { path: project.rootPath, source: 'board' });
+    }
+  }
+  for (const [key, path] of Object.entries(readLocalRoots())) {
+    if (typeof path === 'string' && path) merged.set(key, { path, source: 'local' });
+  }
+  return [...merged.entries()]
     .sort(([a], [b]) => a.localeCompare(b))
-    .map(([key, path]) => {
-      const exists = typeof path === 'string' && existsSync(path);
-      const directory = exists ? statSync(path).isDirectory() : false;
+    .map(([key, { path, source }]) => {
+      let exists = false;
+      let directory = false;
+      try {
+        exists = existsSync(path);
+        directory = exists && statSync(path).isDirectory();
+      } catch {
+        exists = false;
+      }
       return {
         key,
         path,
+        source,
         exists,
         directory,
         git: directory && existsSync(join(path, '.git')),
       };
     });
+}
+
+function rootFor(projectKey: string, roots: RootInfo[]): string | null {
+  if (!projectKey) return null;
+  return roots.find((r) => r.key === projectKey)?.path ?? null;
 }
 
 const server = new McpServer({ name: 'kanban', version: '0.3.0' });
@@ -130,7 +165,7 @@ server.tool(
   'Check the board API, database, owner account and local project roots. Run this first when a tool fails.',
   {},
   async () => {
-    const localRoots = rootHealth();
+    const projectRoots = await availableRoots();
     let remote: unknown;
     try {
       remote = await request<unknown>('/api/mcp/health');
@@ -141,7 +176,7 @@ server.tool(
       content: [
         {
           type: 'text' as const,
-          text: JSON.stringify({ apiBase: API_BASE, remote, localRoots }, null, 2),
+          text: JSON.stringify({ apiBase: API_BASE, remote, projectRoots }, null, 2),
         },
       ],
     };
@@ -154,12 +189,13 @@ server.tool(
   { limit: z.number().int().min(1).max(50).optional() },
   async ({ limit }) => {
     const board = await getBoard();
+    const roots = await availableRoots();
     const tasks = selectOpenTasks({
       tasks: board.tasks,
       columns: board.columns,
       date: todayInTz(),
       limit,
-    }).map((t) => ({ ...t, projectRoot: projectRoot(t.projectKey) }));
+    }).map((t) => ({ ...t, projectRoot: rootFor(t.projectKey, roots) }));
     return { content: [{ type: 'text' as const, text: JSON.stringify(tasks) }] };
   },
 );
@@ -175,6 +211,7 @@ server.tool(
   },
   async ({ date, project, limit, includeDone }) => {
     const board = await getBoard();
+    const roots = await availableRoots();
     const tasks = selectOpenTasks({
       tasks: board.tasks,
       columns: board.columns,
@@ -182,7 +219,7 @@ server.tool(
       project,
       limit,
       excludeDone: !includeDone,
-    }).map((t) => ({ ...t, projectRoot: projectRoot(t.projectKey) }));
+    }).map((t) => ({ ...t, projectRoot: rootFor(t.projectKey, roots) }));
     return { content: [{ type: 'text' as const, text: JSON.stringify(tasks) }] };
   },
 );
@@ -191,15 +228,129 @@ server.tool('get_task', 'Full task by id.', { id: z.string() }, async ({ id }) =
   const board = await getBoard();
   const task = board.tasks.find((t) => t.id === id);
   if (!task) throw new Error('not found');
+  const roots = await availableRoots();
   return {
     content: [
       {
         type: 'text' as const,
-        text: JSON.stringify({ ...task, projectRoot: projectRoot(task.projectKey) }),
+        text: JSON.stringify({ ...task, projectRoot: rootFor(task.projectKey, roots) }),
       },
     ],
   };
 });
+
+server.tool(
+  'pick_task',
+  "Claim the next card from Todo and move it to Doing. Order: high > medium > low priority, then due date (overdue first, undated last), then board order. Only cards whose project has a usable root on this machine. Call once, then work the returned card in projectRoot on the returned branch.",
+  {
+    runner: z.string().min(1).max(40).optional(),
+    model: z.string().max(120).optional(),
+    project: z.string().max(64).optional(),
+  },
+  async ({ runner, model, project }) => {
+    const roots = await availableRoots();
+    const usable = roots.filter((r) => r.exists && r.directory);
+    if (usable.length === 0) {
+      throw new Error(
+        'No project root is available on this machine. Add one in the board Projects panel, or set server/project-roots.json.',
+      );
+    }
+    const allowed = project ? usable.filter((r) => r.key === project) : usable;
+    if (allowed.length === 0) {
+      const known = usable.map((r) => r.key).join(', ');
+      throw new Error(`No usable project root "${project}". Known roots: ${known}`);
+    }
+    const result = await request<{ task: BoardTaskDTO | null; branch?: string }>(
+      '/api/mcp/pick',
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          runner: runner ?? process.env.KANBAN_MCP_RUNNER ?? 'opencode',
+          model: model ?? process.env.KANBAN_MCP_MODEL ?? null,
+          projects: allowed.map((r) => r.key),
+        }),
+      },
+    );
+    if (!result.task) {
+      return {
+        content: [
+          {
+            type: 'text' as const,
+            text: JSON.stringify({ task: null, reason: 'No claimable Todo card.' }),
+          },
+        ],
+      };
+    }
+    return {
+      content: [
+        {
+          type: 'text' as const,
+          text: JSON.stringify({
+            ...result.task,
+            projectRoot: rootFor(result.task.projectKey, roots),
+            branch: result.branch,
+          }),
+        },
+      ],
+    };
+  },
+);
+
+server.tool(
+  'heartbeat_task',
+  'Refresh the heartbeat on a claimed card. Call it between long steps so the board can tell a slow run from a dead one.',
+  { id: z.string() },
+  async ({ id }) => {
+    const result = await request<{ ok: boolean; heartbeatAt: string }>(
+      `/api/mcp/tasks/${encodeURIComponent(id)}/heartbeat`,
+      { method: 'POST', body: JSON.stringify({}) },
+    );
+    return { content: [{ type: 'text' as const, text: JSON.stringify(result) }] };
+  },
+);
+
+server.tool(
+  'finish_task',
+  "Move the claimed card to Under Review. Call after the branch is committed and pushed, and after the PR is opened when gitEnabled is true. Never marks Done and never merges.",
+  {
+    id: z.string(),
+    branch: z.string().max(128).optional(),
+    lastCommit: z.string().regex(/^[0-9a-f]{7,40}$/i).optional(),
+    prUrl: z.string().max(500).optional(),
+    prNumber: z.number().int().min(1).max(999_999_999).optional(),
+    summary: z.string().max(2000).optional(),
+  },
+  async ({ id, branch, lastCommit, prUrl, prNumber, summary }) => {
+    const result = await request<{ board: BoardDTO }>('/api/mcp/tasks/' + encodeURIComponent(id) + '/finish', {
+      method: 'POST',
+      body: JSON.stringify({ branch, lastCommit, prUrl, prNumber, summary }),
+    });
+    const task = result.board.tasks.find((t) => t.id === id);
+    const roots = await availableRoots();
+    return {
+      content: [
+        {
+          type: 'text' as const,
+          text: JSON.stringify(task ? { ...task, projectRoot: rootFor(task.projectKey, roots) } : task),
+        },
+      ],
+    };
+  },
+);
+
+server.tool(
+  'release_task',
+  'Give a claimed card back to Todo when the run cannot continue. The card keeps its journal and the run is marked abandoned.',
+  { id: z.string(), reason: z.string().max(1000).optional() },
+  async ({ id, reason }) => {
+    const result = await request<{ board: BoardDTO }>('/api/mcp/tasks/' + encodeURIComponent(id) + '/release', {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    });
+    const task = result.board.tasks.find((t) => t.id === id);
+    return { content: [{ type: 'text' as const, text: JSON.stringify(task) }] };
+  },
+);
 
 server.tool(
   'update_status',

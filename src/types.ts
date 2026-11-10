@@ -4,6 +4,37 @@ export type ColumnKind = 'todo' | 'active' | 'review' | 'done';
 
 export type AgentState = 'idle' | 'running' | 'under-review' | 'completed';
 
+export type RunStatus =
+  | 'claimed'
+  | 'running'
+  | 'review'
+  | 'completed'
+  | 'failed'
+  | 'abandoned';
+
+export interface TaskRun {
+  id: string;
+  status: RunStatus;
+  runner: string;
+  model: string | null;
+  branch: string | null;
+  worktree: string | null;
+  prUrl: string | null;
+  prNumber: number | null;
+  startedAt: number;
+  heartbeatAt: number;
+  finishedAt: number | null;
+  elapsedMs: number | null;
+  error: string | null;
+}
+
+export interface Project {
+  id: string;
+  key: string;
+  name: string;
+  rootPath: string;
+}
+
 export interface Task {
   id: string;
   columnId: string;
@@ -18,6 +49,7 @@ export interface Task {
   gitEnabled: boolean;
   branch: string | null;
   lastCommit: string | null;
+  run: TaskRun | null;
   createdAt: number;
   updatedAt: number;
 }

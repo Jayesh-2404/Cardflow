@@ -26,6 +26,7 @@ import DragOverlayCard from './components/DragOverlayCard';
 import type { CardDragState } from './components/TaskCard';
 import TaskEditor, { type EditorDraft } from './components/TaskEditor';
 import JournalPanel from './components/JournalPanel';
+import ProjectsPanel from './components/ProjectsPanel';
 import CommandPalette from './components/CommandPalette';
 import Login from './components/Login';
 import Icon from './components/Icon';
@@ -1133,6 +1134,7 @@ export default function App() {
               pruneBusy={pruneBusy}
             />
           }
+          projectsPanel={<ProjectsPanel />}
           archiveList={
             archived.length === 0 ? (
               <p className="text-[12.5px] text-kb-muted">Nothing archived.</p>
@@ -1284,6 +1286,10 @@ export default function App() {
             onAddNote={handleAddNote}
             onDeleteEntry={(id) => void handleDeleteEntry(id)}
             onClearTask={editing ? () => void handleClearTask(editing.id) : undefined}
+            onRelease={(id) => {
+              void commit(api.releaseTask(id));
+              setEditing(null);
+            }}
           />
         )}
 

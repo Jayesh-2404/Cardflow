@@ -1,8 +1,8 @@
-import { memo, useCallback } from 'react';
+import { memo, useCallback, useEffect, useState } from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { motion, useReducedMotion } from 'motion/react';
 import Icon from './Icon';
-import { dueMeta, shortId } from '../lib/format';
+import { dueMeta, elapsedLabel, runElapsed, shortId } from '../lib/format';
 import type { Task } from '../types';
 
 const PRIO_LABEL: Record<Task['priority'], string> = {
@@ -65,6 +65,24 @@ interface SurfaceProps {
 function CardSurface({ task, entryCount, overlay }: SurfaceProps) {
   const due = dueMeta(task.dueDate);
   const tags = task.tags.slice(0, 2);
+  const run = task.run;
+  const live = run?.status === 'running' || run?.status === 'claimed';
+  const [now, setNow] = useState(() => Date.now());
+
+  // Only a live card needs a clock; finished runs use their stored elapsedMs.
+  useEffect(() => {
+    if (!live) return;
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [live]);
+
+  const elapsed = run ? runElapsed(run.startedAt, run.finishedAt, run.elapsedMs, now) : 0;
+  const showRun = Boolean(run) && (live || run!.status === 'review');
+  const runTitle = run
+    ? `${run.runner}${run.model ? ` · ${run.model}` : ''}\n${run.status} · ${elapsedLabel(elapsed)}${
+        run.branch ? `\n${run.branch}` : ''
+      }`
+    : '';
 
   return (
     <div
@@ -149,25 +167,45 @@ function CardSurface({ task, entryCount, overlay }: SurfaceProps) {
           </span>
         )}
 
-        {(task.agentState === 'running' || task.agentState === 'under-review') && (
+        {showRun && (
           <span
-            title={
-              task.branch
-                ? `Agent: ${task.agentState} on ${task.branch}`
-                : `Agent: ${task.agentState}`
-            }
+            title={runTitle}
             data-testid="agent-badge"
-            className="kb-chip !py-0.5 !text-[11px]"
+            className="kb-chip min-w-0 !py-0.5 !text-[11px]"
           >
             <span
               aria-hidden
-              className="h-1.5 w-1.5 rounded-full"
+              className="h-1.5 w-1.5 shrink-0 rounded-full"
               style={{
-                background:
-                  task.agentState === 'running' ? 'var(--kb-warn)' : 'var(--kb-accent)',
+                background: live ? 'var(--kb-warn)' : 'var(--kb-accent)',
               }}
             />
-            {task.agentState === 'under-review' ? 'Review' : 'Running'}
+            <span className="max-w-[7.5rem] truncate">{run!.runner}</span>
+            <span className="shrink-0 opacity-70">{elapsedLabel(elapsed)}</span>
+            {run!.prUrl && (
+              <a
+                href={run!.prUrl}
+                target="_blank"
+                rel="noreferrer"
+                title={run!.prNumber ? `Pull request #${run!.prNumber}` : 'Pull request'}
+                data-testid="run-pr-link"
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={(e) => e.stopPropagation()}
+                className="shrink-0 text-kb-accent hover:underline"
+              >
+                <Icon name="external" size={11} />
+              </a>
+            )}
+          </span>
+        )}
+        {!run && task.agentState === 'under-review' && (
+          <span title="Waiting for a human review" className="kb-chip !py-0.5 !text-[11px]">
+            <span
+              aria-hidden
+              className="h-1.5 w-1.5 rounded-full"
+              style={{ background: 'var(--kb-accent)' }}
+            />
+            Review
             {task.projectKey && <span className="opacity-70">{task.projectKey}</span>}
           </span>
         )}

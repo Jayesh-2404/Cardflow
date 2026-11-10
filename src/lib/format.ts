@@ -50,6 +50,27 @@ export function dueMeta(iso: string | null, now: Date = new Date()): DueMeta {
 const MIN_MS = 60_000;
 const HOUR_MS = 3_600_000;
 
+/** Compact run duration: `42s`, `12m`, `1h 05m`. */
+export function elapsedLabel(ms: number): string {
+  const seconds = Math.max(0, Math.round(ms / 1000));
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  return `${hours}h ${String(minutes % 60).padStart(2, '0')}m`;
+}
+
+/** A finished run uses its stored time; a live one keeps counting. */
+export function runElapsed(
+  startedAt: number,
+  finishedAt: number | null,
+  elapsedMs: number | null,
+  now = Date.now(),
+): number {
+  if (elapsedMs !== null) return elapsedMs;
+  return Math.max(0, (finishedAt ?? now) - startedAt);
+}
+
 function startOfDay(d: Date): number {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
 }
