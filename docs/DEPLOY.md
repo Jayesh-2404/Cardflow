@@ -194,18 +194,12 @@ Then, in the browser, the checklist:
       the other updates within a second, and the header live dot is green.
 - [ ] **Journal** — open a card, log a note; the entry appears on the card timeline and
       in the journal panel (`J`), and still reads after a reload.
-- [ ] **MCP token** — drive the board from an agent once. Preferred local setup: put
-      `KANBAN_USER_ID` in `server/.env`. Find your id in the Neon SQL editor:
-
-      ```sql
-      SELECT id, email FROM "User" ORDER BY "createdAt";
-      ```
-
-      then restart OpenCode and call `list_today`: it should return the deployed board.
-      The `KANBAN_TOKEN` variant needs a **fresh access JWT** (kb_at cookie from a
-      logged-in browser, or minted with the production `JWT_SECRET`) because tokens
-      live 15 minutes; it only verifies when the local `server/.env` carries the same
-      `JWT_SECRET` that signed it (see README §MCP).
+- [ ] **MCP** — drive the board from an agent once. In `server/.env`, set a static
+      `KANBAN_MCP_TOKEN` (32+ random chars) and `KANBAN_MCP_USER_ID` (find the owner
+      id in the Neon SQL editor: `SELECT id, email FROM "User" ORDER BY "createdAt";`).
+      Restart the API so it reads both, then restart OpenCode and call `board_health`:
+      it must report `ok: true`, and `list_today` must return the deployed board.
+      There is no 15-minute expiry to chase; rotating the token is the only re-auth.
 
 ## 6. Rollback notes
 
@@ -237,7 +231,8 @@ Then, in the browser, the checklist:
 | First request after ~15 min idle takes 30–50 s | free-tier instance/DB asleep | Not a bug; retry, or move to a paid instance (render.txt §5) |
 | Login returns 429 | auth rate limit (60 tries / 10 min / IP) | Wait 10 minutes |
 | Live updates stop after the stream drops (network blip, laptop sleep) | web bundle built before the reconnect fix; the reconnects ride an expired access cookie | Deploy the current web build — the stream now refreshes the session and reconnects itself |
-| MCP: "Invalid KANBAN_TOKEN" | token expired (15 min) or signed with a different `JWT_SECRET` | Prefer `KANBAN_USER_ID`, or mint a token with the production secret |
+| MCP: 503 "MCP auth is not configured" | `KANBAN_MCP_TOKEN` or `KANBAN_MCP_USER_ID` missing | Set both in `server/.env`, restart the API |
+| MCP: "board API is not reachable" | API not running, or `KANBAN_API_URL` points at the wrong host | Start `cd server && npm run dev`, or fix `KANBAN_API_URL` |
 
 ## 8. What the repo checks for you
 

@@ -12,7 +12,7 @@ Cardflow is a small kanban app. The unusual part is the journal. Every change to
 - **Journal.** Every mutation writes a TaskEvent: created, moved, field changes, archived, deleted, plus free-form notes. Open a card for its timeline, or press J for the feed across all cards.
 - **Live sync.** The API pushes one server-sent event per change, and open tabs refetch the board. Two tabs stay in step within a second.
 - **Keyboard control.** Ctrl/Cmd+K opens a command palette. N creates a task, J opens the journal, and / focuses the card filter. The full table is below.
-- **Agents.** server/src/mcp.ts is a stdio MCP server with 7 tools (list_today, list_by_date, get_task, update_status, add_note, delete_note, prune_journal). An OpenCode session uses it to pick up today's cards, move them, and journal notes. Agent writes pass the same validators and land in the same journal as the web UI. Agents cannot mark a card Done. A human does that.
+- **Agents.** server/src/mcp.ts is a stdio MCP server with 8 tools (board_health, list_today, list_by_date, get_task, update_status, add_note, delete_note, prune_journal). It is a thin HTTP client over `/api/mcp`, so agent writes pass the same validators, SSE bump, and journal as the web UI. An OpenCode session uses it to pick up cards, move them, and journal notes. Agents cannot mark a card Done. A human does that.
 
 ## Run it locally
 
@@ -43,7 +43,7 @@ You need Node 20 or newer and a Postgres database. Neon's free tier works.
 - The API is Express with Prisma and Postgres. The tables are User, Session, Column, Task, and TaskEvent.
 - Every board mutation writes its journal row in the same request. A journal failure never fails the change itself.
 - GET /api/board/stream pushes one event per mutation. Connected tabs refetch the board on each event.
-- The MCP server runs over stdio, not HTTP. It writes through the same code paths as the REST routes.
+- The MCP server runs over stdio and calls the API's `/api/mcp` routes with a static bearer token. It holds no database client.
 - In production the API refuses to boot with a broken config. `npm run preflight` in `server/` checks the same rules before a deploy.
 
 The data model, auth design, and agent rules are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). The deploy runbook is [docs/DEPLOY.md](docs/DEPLOY.md).

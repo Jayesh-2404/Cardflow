@@ -216,7 +216,10 @@ test('mcp.ts resolves today through todayInTz, not the UTC date', () => {
   assert.doesNotMatch(mcpSource, /toISOString\(\)\.slice\(0,\s*10\)/);
 });
 
-test('mcp.ts fences update_status with agentColumn and never offers Done', () => {
-  assert.match(mcpSource, /column:\s*agentColumn\.optional\(\)/);
-  assert.doesNotMatch(mcpSource, /z\.enum\(\[[^\]]*'Done'[^\]]*\]\)/);
+test('mcp.ts refuses Done at runtime and points agents at Under Review', () => {
+  // The HTTP tool takes a column title, so a Zod enum no longer fences it;
+  // the guard must run before the PATCH is sent.
+  assert.match(mcpSource, /isDoneTitle\(column\)/);
+  assert.match(mcpSource, /Agents must not move a card to Done/);
+  assert.match(mcpSource, /Under Review/);
 });

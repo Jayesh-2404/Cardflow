@@ -9,10 +9,10 @@ How Cardflow's pieces fit together. For local setup, see the README. For deploys
 - The browser runs the web app (React, Vite, Tailwind) as a static build.
 - The API (Express, Prisma) serves the REST routes, the SSE stream, and all auth.
 - Postgres stores User, Session, Column, Task, and TaskEvent.
-- The MCP server (server/src/mcp.ts) is a separate stdio process. It reads and writes the same tables through the same helpers as the API.
+- The MCP server (server/src/mcp.ts) is a separate stdio process and a thin HTTP client over the API's `/api/mcp/*` routes. It holds no database client.
 - An AI agent session (OpenCode) talks to the MCP server over stdio JSON-RPC.
 
-Both the web app and the agent go through code that scopes every query by userId and writes a journal row for every mutation.
+The web app and the agent both go through the API, which scopes every query by userId, validates input, bumps SSE, and writes a journal row for every mutation.
 
 ## Data model
 
@@ -55,14 +55,15 @@ created, updated, moved, archived, unarchived, note, deleted, agent-started, age
 
 ## Agent path (MCP)
 
-- server/src/mcp.ts speaks stdio only. The HTTP server never mounts it. opencode.jsonc wires it as the local `kanban` MCP server.
-- Auth resolves per tool call from KANBAN_USER_ID (local single user) or KANBAN_TOKEN (access JWT signed with the same JWT_SECRET, so it lives 15 minutes).
-- Tools: list_today, list_by_date, get_task, update_status, add_note, delete_note, prune_journal.
+- server/src/mcp.ts speaks stdio only. The API mounts the same board handlers at `/api/mcp` behind a static bearer token, so the MCP process is a thin HTTP client with no Prisma import and starts in well under a second.
+- Auth: `KANBAN_MCP_TOKEN` (static, 32+ chars) in the `Authorization: Bearer` header, plus `KANBAN_MCP_USER_ID` on the server. The token names no user; the API fixes the owner from its own env. `/api/mcp/health` answers `503` until both are set.
+- `board_health` checks the API, database, owner account, SSE client count and every local project root. It is the first tool to call when any other tool fails.
+- Tools: board_health, list_today, list_by_date, get_task, update_status, add_note, delete_note, prune_journal.
 - list_today and list_by_date skip cards in a Done list. list_by_date takes includeDone: true to see them anyway.
-- update_status accepts Todo and Doing only. Done is absent from the tool schema on purpose. If a model tries it, the error tells it to set agentState to under-review and leave the card for a human.
+- update_status takes a list title. It refuses Done at runtime and tells the model to set agentState to under-review and leave the card for a human.
 - "Today" resolves in the KANBAN_TZ timezone (default Asia/Kolkata), because between 00:00 and 05:30 IST the UTC date is still yesterday.
-- Project keys map to local paths through server/project-roots.json (gitignored).
-- Writes go through the same validators and journal helpers as the REST API, so agent moves appear in the same timeline as yours.
+- Project keys map to local paths through server/project-roots.json (gitignored). The MCP checks those paths locally; the API never learns them.
+- Every write goes through the API, so agent moves and notes appear in the same journal and SSE stream as yours.
 
 ## Web app
 
@@ -82,7 +83,9 @@ Server (server/.env, gitignored):
 | FRONTEND_ORIGIN | Exact origin of the web app. CORS and cookies depend on it |
 | PORT | HTTP port, default 4000 |
 | NODE_ENV | production switches cookies to Secure and enables the strict config checks |
-| KANBAN_USER_ID or KANBAN_TOKEN | MCP authentication |
+| KANBAN_MCP_TOKEN | Static bearer token for `/api/mcp` (32+ characters) |
+| KANBAN_MCP_USER_ID | Board owner the MCP acts as |
+| KANBAN_API_URL | API base the MCP calls, default http://localhost:4000 |
 | KANBAN_TZ | Timezone for "today" in the MCP tools, default Asia/Kolkata |
 
 Frontend, build time only:

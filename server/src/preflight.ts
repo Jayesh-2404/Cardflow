@@ -78,6 +78,23 @@ export function checkDeployEnv(
     err('JWT_SECRET still contains placeholder text.', JWT_HINT);
   }
 
+  const mcpToken = env.KANBAN_MCP_TOKEN?.trim();
+  const mcpUserId = env.KANBAN_MCP_USER_ID?.trim();
+  if (mcpToken || mcpUserId) {
+    if (!mcpToken || !mcpUserId) {
+      warn(
+        'Only one of KANBAN_MCP_TOKEN / KANBAN_MCP_USER_ID is set.',
+        'The MCP needs both: the token it presents and the board owner it acts as. /api/mcp returns 503 until both exist.',
+      );
+    }
+    if (mcpToken && mcpToken.length < 32) {
+      warn(
+        `KANBAN_MCP_TOKEN is only ${mcpToken.length} characters; 32 is the minimum.`,
+        'Generate one with: node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))"',
+      );
+    }
+  }
+
   const port = env.PORT?.trim();
   if (port) {
     const n = Number(port);

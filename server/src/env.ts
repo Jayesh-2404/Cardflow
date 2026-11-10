@@ -44,6 +44,10 @@ export const env = {
     .replace(/\/+$/, ''),
   databaseUrl: read('DATABASE_URL'),
   jwtSecret: read('JWT_SECRET'),
+  // Static auth for the local MCP. Optional: a deployment with no MCP does not
+  // need them, and both must be present before /api/mcp accepts a request.
+  mcpToken: (process.env.KANBAN_MCP_TOKEN ?? '').trim(),
+  mcpUserId: (process.env.KANBAN_MCP_USER_ID ?? '').trim(),
 };
 
 export const isProd = nodeEnv === 'production';

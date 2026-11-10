@@ -6,6 +6,8 @@ import { env } from './env';
 import { prisma, warmDatabase } from './db';
 import { authRouter } from './routes/auth';
 import { boardRouter } from './routes/board';
+import { mcpRouter } from './routes/mcp';
+import { requireAuth, requireMcpAuth } from './middleware';
 
 const app = express();
 
@@ -48,7 +50,11 @@ app.get('/api/health/db', async (_req, res) => {
 });
 
 app.use('/api/auth', authRouter);
-app.use('/api/board', boardRouter);
+// Same board handlers, two doors: browser JWT for the web app, static bearer
+// token for the local MCP. Auth lives at the mount so every route is covered.
+app.use('/api/board', requireAuth, boardRouter);
+app.use('/api/mcp', mcpRouter);
+app.use('/api/mcp', requireMcpAuth, boardRouter);
 
 app.use((_req, res) => {
   res.status(404).json({ error: 'not found' });

@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { prisma } from '../db';
-import { requireAuth, type AuthedRequest } from '../middleware';
+import type { AuthedRequest } from '../middleware';
 import {
   cleanProjectKey,
   cleanTags,
@@ -25,7 +25,9 @@ import {
 } from '../journal';
 
 export const boardRouter = Router();
-boardRouter.use(requireAuth);
+
+// Auth is applied at the mount point (see index.ts), because the same handlers
+// serve /api/board (browser cookie JWT) and /api/mcp (static bearer token).
 
 function uid(req: unknown): string {
   return (req as AuthedRequest).userId;
@@ -102,8 +104,14 @@ boardRouter.get('/tasks', async (req, res) => {
   const limitRaw = typeof q.limit === 'string' ? Number(q.limit) : 20;
   const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(Math.floor(limitRaw), 1), 50) : 20;
 
-  const where: { userId: string; dueDate?: { gte: Date; lt: Date }; projectKey?: string } = {
+  const where: {
+    userId: string;
+    archived: boolean;
+    dueDate?: { gte: Date; lt: Date };
+    projectKey?: string;
+  } = {
     userId,
+    archived: false,
   };
   if (due) {
     const next = new Date(due.getTime() + 24 * 60 * 60 * 1000);
@@ -248,6 +256,7 @@ boardRouter.post('/columns', async (req, res) => {
   await prisma.column.create({
     data: { userId, title: title.trim(), position: count },
   });
+  bump(userId);
   res.status(201).json({ board: await getBoardState(userId) });
 });
 
@@ -440,6 +449,7 @@ boardRouter.post('/tasks', async (req, res) => {
     summary: `Created in ${titles.get(columnId) ?? 'a list'}`,
     toColumn: titles.get(columnId) ?? null,
   });
+  bump(userId);
   res.status(201).json({ board: await getBoardState(userId) });
 });
 
@@ -458,6 +468,7 @@ boardRouter.patch('/tasks/:id', async (req, res) => {
     tags,
     archived,
     columnId,
+    column,
     projectKey,
     agentState,
     gitEnabled,
@@ -471,6 +482,7 @@ boardRouter.patch('/tasks/:id', async (req, res) => {
     tags?: unknown;
     archived?: unknown;
     columnId?: unknown;
+    column?: unknown;
     projectKey?: unknown;
     agentState?: unknown;
     gitEnabled?: unknown;
@@ -572,19 +584,38 @@ boardRouter.patch('/tasks/:id', async (req, res) => {
     }
     data.archived = archived;
   }
-  if (columnId !== undefined) {
-    if (typeof columnId !== 'string') {
+  // Two ways to name a list: id (the web app) or exact title (the MCP, whose
+  // model-facing vocabulary is column names). Resolve the title here so both
+  // clients share one move path, one journal entry and one bump.
+  let targetColumnId: unknown = columnId;
+  if (targetColumnId === undefined && column !== undefined) {
+    if (typeof column !== 'string' || !column.trim()) {
+      res.status(400).json({ error: 'bad column' });
+      return;
+    }
+    const byTitle = await prisma.column.findFirst({
+      where: { userId, title: column.trim() },
+      select: { id: true },
+    });
+    if (!byTitle) {
+      res.status(404).json({ error: `no list "${column.trim()}"` });
+      return;
+    }
+    targetColumnId = byTitle.id;
+  }
+  if (targetColumnId !== undefined) {
+    if (typeof targetColumnId !== 'string') {
       res.status(400).json({ error: 'bad columnId' });
       return;
     }
-    const col = await prisma.column.findFirst({ where: { id: columnId, userId } });
+    const col = await prisma.column.findFirst({ where: { id: targetColumnId, userId } });
     if (!col) {
       res.status(404).json({ error: 'column not found' });
       return;
     }
-    if (columnId !== task.columnId) {
-      const count = await prisma.task.count({ where: { userId, columnId } });
-      data.columnId = columnId;
+    if (targetColumnId !== task.columnId) {
+      const count = await prisma.task.count({ where: { userId, columnId: targetColumnId } });
+      data.columnId = targetColumnId;
       data.position = count;
     }
   }

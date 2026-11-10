@@ -82,6 +82,33 @@ test('a malformed PORT is rejected, a good one is not', () => {
   assert.deepEqual(checkDeployEnv(ok, { prod: true }), []);
 });
 
+test('MCP auth is optional, but half a pair or a short token warns', () => {
+  const absent = goodProd();
+  assert.deepEqual(checkDeployEnv(absent, { prod: true }), []);
+
+  const half = goodProd();
+  half.KANBAN_MCP_TOKEN = 'a'.repeat(64);
+  assert.ok(
+    warnings(checkDeployEnv(half, { prod: true })).some((m) =>
+      m.includes('Only one of KANBAN_MCP_TOKEN / KANBAN_MCP_USER_ID'),
+    ),
+  );
+
+  const short = goodProd();
+  short.KANBAN_MCP_TOKEN = 'short';
+  short.KANBAN_MCP_USER_ID = 'cuid-of-owner';
+  assert.ok(
+    warnings(checkDeployEnv(short, { prod: true })).some((m) =>
+      m.includes('KANBAN_MCP_TOKEN is only 5 characters'),
+    ),
+  );
+
+  const paired = goodProd();
+  paired.KANBAN_MCP_TOKEN = 'a'.repeat(64);
+  paired.KANBAN_MCP_USER_ID = 'cuid-of-owner';
+  assert.deepEqual(checkDeployEnv(paired, { prod: true }), []);
+});
+
 test('production requires NODE_ENV=production', () => {
   const env = goodProd();
   env.NODE_ENV = 'development';

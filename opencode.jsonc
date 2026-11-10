@@ -4,15 +4,14 @@
     "servers": {
       "kanban": {
         "type": "local",
-        // Runs the built server from server/dist. Measured: ~0.4-2s to
-        // answer initialize, versus 5-45s for the old `npx tsx` source path,
-        // which tripped OpenCode's connect timeout ("mcp connect failed:
-        // Request timed out"). After editing server/src, rebuild with:
+        // The MCP is a thin HTTP client: it starts in well under a second and
+        // talks to the API at http://localhost:4000/api/mcp. It holds no
+        // Prisma client, so OpenCode's connect timeout is no longer in play.
+        // Requires KANBAN_MCP_TOKEN + KANBAN_MCP_USER_ID in server/.env and a
+        // running API. After editing server/src, rebuild with:
         //   cd server && node node_modules\typescript\bin\tsc -p tsconfig.json
         // (plain `npm run build` also runs prisma generate, which fails with
-        // EPERM on Windows while a running MCP holds the engine file).
-        // Auth comes from server/.env (KANBAN_USER_ID local, or KANBAN_TOKEN).
-        // Override per-launch with: "environment": { "KANBAN_USER_ID": "..." }
+        // EPERM on Windows while a running API holds the engine file.)
         "command": ["node", "server/dist/mcp.js"],
         "timeout": 20000
       }
