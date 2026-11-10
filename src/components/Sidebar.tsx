@@ -2,7 +2,7 @@ import { useState, type ReactNode } from 'react';
 import Icon, { type IconName } from './Icon';
 import type { AgentState, FilterState, Priority } from '../types';
 
-export type PanelName = 'filters' | 'archive' | 'settings' | 'journal';
+export type PanelName = 'filters' | 'archive' | 'settings' | 'journal' | 'projects';
 
 interface Props {
   railOpen: boolean;
@@ -25,6 +25,7 @@ interface Props {
   onWipe: () => void;
   archiveList: ReactNode;
   journalList: ReactNode;
+  projectsPanel: ReactNode;
 }
 
 const PRIORITIES: Priority[] = ['low', 'medium', 'high'];
@@ -35,6 +36,7 @@ const PANEL_TITLE: Record<PanelName, string> = {
   archive: 'Archive',
   journal: 'Journal',
   settings: 'Settings',
+  projects: 'Projects',
 };
 
 export default function Sidebar(props: Props) {
@@ -105,6 +107,7 @@ export default function Sidebar(props: Props) {
 
         {railBtn('columns', 'Board', 'filters')}
         {railBtn('activity', 'Journal', 'journal')}
+        {railBtn('folder', 'Projects', 'projects')}
         {railBtn('archive', 'Archive', 'archive', props.archivedCount)}
         {railBtn('settings', 'Settings', 'settings')}
 
@@ -229,6 +232,8 @@ export default function Sidebar(props: Props) {
               {panel === 'archive' && <div className="space-y-2">{props.archiveList}</div>}
 
               {panel === 'journal' && <div>{props.journalList}</div>}
+
+              {panel === 'projects' && <div>{props.projectsPanel}</div>}
 
               {panel === 'settings' && (
                 <SettingsPanel

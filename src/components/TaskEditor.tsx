@@ -4,7 +4,7 @@ import Segmented from './Segmented';
 import { NoteComposer, Timeline } from './Timeline';
 import { useAutoGrow } from '../lib/autoGrow';
 import type { JournalEvent } from '../lib/api';
-import { absTime, shortId } from '../lib/format';
+import { absTime, elapsedLabel, runElapsed, shortId } from '../lib/format';
 import type { Column, Priority, Task } from '../types';
 
 export interface EditorDraft {
@@ -31,6 +31,7 @@ interface Props {
   onAddNote: (taskId: string, note: string) => void;
   onDeleteEntry?: (entryId: string) => void;
   onClearTask?: () => void;
+  onRelease?: (taskId: string) => void;
 }
 
 export function draftFromTask(t: Task): EditorDraft {
@@ -58,6 +59,15 @@ export function emptyDraft(columnId: string): EditorDraft {
     gitEnabled: false,
   };
 }
+
+const RUN_STATUS_LABEL: Record<string, string> = {
+  claimed: 'Claimed',
+  running: 'Running',
+  review: 'Under review',
+  completed: 'Completed',
+  failed: 'Failed',
+  abandoned: 'Released',
+};
 
 /**
  * One line of the property sheet: a fixed 96px label column and the control
@@ -106,6 +116,15 @@ export default function TaskEditor(props: Props) {
     props.task ? draftFromTask(props.task) : emptyDraft(props.initialColumnId),
   );
   const titleRef = useRef<HTMLTextAreaElement>(null);
+  const run = props.task?.run ?? null;
+  const live = run?.status === 'running' || run?.status === 'claimed';
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (!live) return;
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [live]);
 
   useEffect(() => {
     if (props.task) setDraft(draftFromTask(props.task));
@@ -244,7 +263,7 @@ export default function TaskEditor(props: Props) {
               />
             </Row>
 
-            {props.task?.branch && (
+            {props.task?.branch && !props.task.run && (
               <Row label="Branch">
                 <span
                   data-testid="editor-branch"
@@ -261,14 +280,90 @@ export default function TaskEditor(props: Props) {
                   type="checkbox"
                   checked={draft.gitEnabled}
                   onChange={(e) => set('gitEnabled', e.target.checked)}
-                  aria-label="Isolate in git branch"
+                  aria-label="Push the branch and open a pull request"
                   data-testid="editor-git"
                   className="h-4 w-4 accent-[var(--kb-accent)]"
                 />
-                Isolate in branch
+                Push + open PR
               </label>
             </Row>
           </dl>
+
+          {run && (
+            <Section
+              label="Agent"
+              aside={
+                <span className="text-[13px] text-kb-muted">{RUN_STATUS_LABEL[run.status] ?? run.status}</span>
+              }
+            >
+              <dl className="grid gap-[2px]">
+                <Row label="Runner">
+                  <span data-testid="editor-run-runner" className="text-[14px]">
+                    {run.runner}
+                  </span>
+                </Row>
+                {run.model && (
+                  <Row label="Model">
+                    <span className="font-mono-kb block truncate text-[13px] text-kb-muted">
+                      {run.model}
+                    </span>
+                  </Row>
+                )}
+                <Row label="Elapsed">
+                  <span data-testid="editor-run-elapsed" className="font-mono-kb text-[13px]">
+                    {elapsedLabel(runElapsed(run.startedAt, run.finishedAt, run.elapsedMs, now))}
+                  </span>
+                </Row>
+                <Row label="Started">
+                  <span className="text-[13px] text-kb-muted">
+                    {absTime(new Date(run.startedAt).toISOString())}
+                  </span>
+                </Row>
+                {run.finishedAt && (
+                  <Row label="Finished">
+                    <span className="text-[13px] text-kb-muted">
+                      {absTime(new Date(run.finishedAt).toISOString())}
+                    </span>
+                  </Row>
+                )}
+                {run.branch && (
+                  <Row label="Branch">
+                    <span className="font-mono-kb block truncate text-[13px] text-kb-muted">
+                      {run.branch}
+                    </span>
+                  </Row>
+                )}
+                {run.prUrl && (
+                  <Row label="PR">
+                    <a
+                      href={run.prUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      data-testid="editor-pr-link"
+                      className="kb-accent inline-flex items-center gap-1 text-[13px] hover:underline"
+                    >
+                      {run.prNumber ? `#${run.prNumber}` : 'Open pull request'}
+                      <Icon name="external" size={12} />
+                    </a>
+                  </Row>
+                )}
+                {run.error && (
+                  <Row label="Error">
+                    <span className="text-[13px] text-kb-danger">{run.error}</span>
+                  </Row>
+                )}
+              </dl>
+              {live && props.onRelease && (
+                <button
+                  onClick={() => props.onRelease!(props.task!.id)}
+                  data-testid="editor-release"
+                  className="kb-btn kb-btn-outline mt-1 h-8 self-start text-[13px]"
+                >
+                  Release claim
+                </button>
+              )}
+            </Section>
+          )}
 
           <Section label="Description">
             <textarea
