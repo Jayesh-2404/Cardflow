@@ -8,7 +8,7 @@ Cardflow is a small kanban app. The unusual part is the journal. Every change to
 
 ## What it does
 
-- **Board.** Three lists to start with (Todo, Doing, Done). Drag cards within and across lists. Cards have a title, details, priority, due date, and tags. Due dates render as "Today", "4d late", or "Sep 26". Archive, restore, export, and import are included.
+- **Board.** Four fixed lists: Todo, Doing, Under Review, and Done. Rename or reorder them; you cannot add or delete one. Drag cards within and across lists. Cards have a title, details, priority, due date, and tags. Due dates render as "Today", "4d late", or "Sep 26". Archive, restore, export, and import are included.
 - **Journal.** Every mutation writes a TaskEvent: created, moved, field changes, archived, deleted, plus free-form notes. Open a card for its timeline, or press J for the feed across all cards.
 - **Live sync.** The API pushes one server-sent event per change, and open tabs refetch the board. Two tabs stay in step within a second.
 - **Keyboard control.** Ctrl/Cmd+K opens a command palette. N creates a task, J opens the journal, and / focuses the card filter. The full table is below.

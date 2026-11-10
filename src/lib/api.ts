@@ -1,4 +1,4 @@
-import type { AgentState, BoardState, Priority } from '../types';
+import type { AgentState, BoardState, ColumnKind, Priority } from '../types';
 
 export const API_BASE = (
   (import.meta.env.VITE_API_URL as string | undefined) || 'http://localhost:4000'
@@ -13,7 +13,7 @@ export class ApiError extends Error {
 }
 
 interface ServerBoard {
-  columns: { id: string; title: string }[];
+  columns: { id: string; title: string; kind: string }[];
   tasks: {
     id: string;
     columnId: string;
@@ -67,6 +67,7 @@ export interface JournalEvent {
 }
 
 const PRIORITIES: Priority[] = ['low', 'medium', 'high'];
+const COLUMN_KINDS: ColumnKind[] = ['todo', 'active', 'review', 'done'];
 const AGENT_STATES: AgentState[] = ['idle', 'running', 'under-review', 'completed'];
 
 const toMillis = (iso: string | undefined): number => {
@@ -76,7 +77,12 @@ const toMillis = (iso: string | undefined): number => {
 
 export function fromServer(b: ServerBoard): BoardState {
   return {
-    columns: b.columns.map((c) => ({ id: c.id, title: c.title, createdAt: 0 })),
+    columns: b.columns.map((c) => ({
+      id: c.id,
+      title: c.title,
+      kind: (COLUMN_KINDS.includes(c.kind as ColumnKind) ? c.kind : 'active') as ColumnKind,
+      createdAt: 0,
+    })),
     tasks: b.tasks.map((t) => ({
       id: t.id,
       columnId: t.columnId,
@@ -201,9 +207,6 @@ export const api = {
   async getBoard(): Promise<BoardState> {
     return fromServer((await req<BoardResponse>('/api/board')).board);
   },
-  async createColumn(title: string): Promise<BoardState> {
-    return fromServer((await req<BoardResponse>('/api/board/columns', body({ title }))).board);
-  },
   async renameColumn(id: string, title: string): Promise<BoardState> {
     return fromServer(
       (await req<BoardResponse>(`/api/board/columns/${id}`, { method: 'PATCH', body: JSON.stringify({ title }) })).board,
@@ -219,9 +222,6 @@ export const api = {
         })
       ).board,
     );
-  },
-  async deleteColumn(id: string): Promise<BoardState> {
-    return fromServer((await req<BoardResponse>(`/api/board/columns/${id}`, { method: 'DELETE' })).board);
   },
 
   async createTask(input: {
@@ -247,7 +247,6 @@ export const api = {
       archived: boolean;
       columnId: string;
       projectKey: string;
-      agentState: AgentState;
       gitEnabled: boolean;
       branch: string | null;
       lastCommit: string | null;

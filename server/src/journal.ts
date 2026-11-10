@@ -166,7 +166,6 @@ export const FIELD_LABELS: Record<string, string> = {
   archived: 'archive state',
   columnId: 'list',
   projectKey: 'project',
-  agentState: 'agent state',
   gitEnabled: 'git isolation',
   branch: 'branch',
   lastCommit: 'commit',

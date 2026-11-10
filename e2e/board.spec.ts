@@ -12,9 +12,9 @@ const card = (page: Page, title: string) =>
   page.locator('[data-testid=task-card]', { hasText: title }).first();
 
 /**
- * Reset to Todo/Doing/Done through the API. Uses the `request` fixture rather
- * than `page.request` so the call is not subject to cross-origin CORS; that
- * fixture has its own cookie jar, so it logs in first.
+ * Reset to the four fixed lists through the API. Uses the `request` fixture
+ * rather than `page.request` so the call is not subject to cross-origin CORS;
+ * that fixture has its own cookie jar, so it logs in first.
  */
 async function resetBoard(request: APIRequestContext, page: Page): Promise<void> {
   const auth = await request.post(`${API}/api/auth/login`, {

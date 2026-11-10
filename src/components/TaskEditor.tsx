@@ -5,7 +5,7 @@ import { NoteComposer, Timeline } from './Timeline';
 import { useAutoGrow } from '../lib/autoGrow';
 import type { JournalEvent } from '../lib/api';
 import { absTime, shortId } from '../lib/format';
-import type { AgentState, Column, Priority, Task } from '../types';
+import type { Column, Priority, Task } from '../types';
 
 export interface EditorDraft {
   title: string;
@@ -16,7 +16,6 @@ export interface EditorDraft {
   columnId: string;
   projectKey: string;
   gitEnabled: boolean;
-  agentState: AgentState;
 }
 
 interface Props {
@@ -44,7 +43,6 @@ export function draftFromTask(t: Task): EditorDraft {
     columnId: t.columnId,
     projectKey: t.projectKey ?? '',
     gitEnabled: t.gitEnabled ?? false,
-    agentState: t.agentState ?? 'idle',
   };
 }
 
@@ -58,7 +56,6 @@ export function emptyDraft(columnId: string): EditorDraft {
     columnId,
     projectKey: '',
     gitEnabled: false,
-    agentState: 'idle',
   };
 }
 
@@ -234,21 +231,6 @@ export default function TaskEditor(props: Props) {
                 className="kb-input kb-input-pill"
               />
               <p className="mt-1 text-[11.5px] text-kb-faint">Comma separated, up to 8.</p>
-            </Row>
-
-            <Row label="Status">
-              <select
-                value={draft.agentState}
-                onChange={(e) => set('agentState', e.target.value as AgentState)}
-                aria-label="Agent status"
-                data-testid="editor-status"
-                className="kb-input kb-input-pill"
-              >
-                <option value="idle">Idle</option>
-                <option value="running">Running</option>
-                <option value="under-review">Under review</option>
-                <option value="completed">Completed</option>
-              </select>
             </Row>
 
             <Row label="Project">

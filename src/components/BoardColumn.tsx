@@ -34,7 +34,6 @@ interface Props {
   onOpenTask: (t: Task) => void;
   onQuickAdd: (columnId: string, title: string) => void;
   onRename: (columnId: string, title: string) => void;
-  onDelete: (columnId: string) => void;
 }
 
 export default function BoardColumn(props: Props) {
@@ -159,14 +158,6 @@ export default function BoardColumn(props: Props) {
             className={iconBtn}
           >
             <Icon name="pencil" size={13} />
-          </button>
-          <button
-            title="Delete list (cards move to the first list)"
-            aria-label={`Delete ${column.title}`}
-            onClick={() => props.onDelete(column.id)}
-            className={`${iconBtn} hover:bg-[var(--kb-danger-soft)] hover:text-kb-danger`}
-          >
-            <Icon name="trash" size={13} />
           </button>
         </span>
 

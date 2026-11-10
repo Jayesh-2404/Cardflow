@@ -34,9 +34,18 @@ async function main(): Promise<void> {
       const user = await prisma.user.create({
         data: { email: EMAIL, passwordHash: await bcrypt.hash(PASSWORD, 12) },
       });
-      const todo = await prisma.column.create({ data: { userId: user.id, title: 'Todo', position: 0 } });
-      await prisma.column.create({ data: { userId: user.id, title: 'Doing', position: 1 } });
-      await prisma.column.create({ data: { userId: user.id, title: 'Done', position: 2 } });
+      const todo = await prisma.column.create({
+        data: { userId: user.id, title: 'Todo', kind: 'todo', position: 0 },
+      });
+      await prisma.column.create({
+        data: { userId: user.id, title: 'Doing', kind: 'active', position: 1 },
+      });
+      await prisma.column.create({
+        data: { userId: user.id, title: 'Under Review', kind: 'review', position: 2 },
+      });
+      await prisma.column.create({
+        data: { userId: user.id, title: 'Done', kind: 'done', position: 3 },
+      });
       await prisma.task.create({
         data: {
           userId: user.id,

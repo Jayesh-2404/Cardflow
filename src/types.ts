@@ -1,5 +1,7 @@
 export type Priority = 'low' | 'medium' | 'high';
 
+export type ColumnKind = 'todo' | 'active' | 'review' | 'done';
+
 export type AgentState = 'idle' | 'running' | 'under-review' | 'completed';
 
 export interface Task {
@@ -23,6 +25,7 @@ export interface Task {
 export interface Column {
   id: string;
   title: string;
+  kind: ColumnKind;
   createdAt: number;
 }
 

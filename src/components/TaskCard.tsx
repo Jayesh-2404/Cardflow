@@ -149,7 +149,7 @@ function CardSurface({ task, entryCount, overlay }: SurfaceProps) {
           </span>
         )}
 
-        {task.agentState !== 'idle' && (
+        {(task.agentState === 'running' || task.agentState === 'under-review') && (
           <span
             title={
               task.branch
@@ -164,18 +164,10 @@ function CardSurface({ task, entryCount, overlay }: SurfaceProps) {
               className="h-1.5 w-1.5 rounded-full"
               style={{
                 background:
-                  task.agentState === 'running'
-                    ? 'var(--kb-warn)'
-                    : task.agentState === 'under-review'
-                      ? 'var(--kb-accent)'
-                      : 'var(--kb-ok)',
+                  task.agentState === 'running' ? 'var(--kb-warn)' : 'var(--kb-accent)',
               }}
             />
-            {task.agentState === 'under-review'
-              ? 'Review'
-              : task.agentState === 'running'
-                ? 'Running'
-                : 'Done'}
+            {task.agentState === 'under-review' ? 'Review' : 'Running'}
             {task.projectKey && <span className="opacity-70">{task.projectKey}</span>}
           </span>
         )}

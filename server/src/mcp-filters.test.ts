@@ -8,22 +8,16 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import {
-  DEFAULT_TZ,
-  DONE_ADVICE,
-  agentColumn,
-  isDoneTitle,
-  selectOpenTasks,
-  todayInTz,
-} from './mcp-filters';
+import { DEFAULT_TZ, selectOpenTasks, todayInTz } from './mcp-filters';
 import type { BoardColumnDTO, BoardTaskDTO } from './board';
 
 // --- fixtures -----------------------------------------------------------------
 
 const columns: BoardColumnDTO[] = [
-  { id: 'c-todo', title: 'Todo' },
-  { id: 'c-doing', title: 'Doing' },
-  { id: 'c-done', title: 'Done' },
+  { id: 'c-todo', title: 'Todo', kind: 'todo' },
+  { id: 'c-doing', title: 'Doing', kind: 'active' },
+  { id: 'c-review', title: 'Under Review', kind: 'review' },
+  { id: 'c-done', title: 'Done', kind: 'done' },
 ];
 
 let seq = 0;
@@ -97,15 +91,6 @@ test('todayInTz falls back to the host date instead of throwing on a bad zone', 
 
 // --- issue #2: Done cards are not open work -----------------------------------
 
-test('isDoneTitle matches the Done list however the user spelled it', () => {
-  for (const title of ['Done', 'done', 'DONE', '  Done  ']) {
-    assert.equal(isDoneTitle(title), true, title);
-  }
-  for (const title of ['Doing', 'Todo', 'Shipped', 'done later', 'To Do']) {
-    assert.equal(isDoneTitle(title), false, title);
-  }
-});
-
 test('selectOpenTasks drops a Done task due today', () => {
   const open = task({ id: 'open', columnId: 'c-todo' });
   const finished = task({ id: 'finished', columnId: 'c-done' });
@@ -113,12 +98,12 @@ test('selectOpenTasks drops a Done task due today', () => {
   assert.deepEqual(got, ['open']);
 });
 
-test('selectOpenTasks drops Done regardless of the list title casing', () => {
+test('selectOpenTasks follows the kind, so a renamed Done list still excludes', () => {
   const renamed: BoardColumnDTO[] = [
-    { id: 'c-todo', title: 'Todo' },
-    { id: 'c-done', title: 'DONE' },
+    { id: 'c-todo', title: 'Todo', kind: 'todo' },
+    { id: 'c-shipped', title: 'Shipped', kind: 'done' },
   ];
-  const finished = task({ id: 'finished', columnId: 'c-done' });
+  const finished = task({ id: 'finished', columnId: 'c-shipped' });
   const got = selectOpenTasks({ tasks: [finished], columns: renamed, date: '2026-10-09' });
   assert.deepEqual(ids(got), []);
 });
@@ -176,50 +161,26 @@ test('selectOpenTasks does not mutate the caller\'s task array', () => {
 
 // --- issue #3: an agent may not mark a card Done -------------------------------
 
-test('update_status accepts Todo and Doing', () => {
-  assert.equal(agentColumn.safeParse('Todo').success, true);
-  assert.equal(agentColumn.safeParse('Doing').success, true);
-  assert.equal(agentColumn.optional().safeParse(undefined).success, true);
+// The refusal lives in the API route, not the MCP process: the route knows the
+// target list's kind, so a renamed Done list cannot be used to get around it.
+const boardSource = readFileSync(join(__dirname, 'routes', 'board.ts'), 'utf8');
+const mcpSource = readFileSync(join(__dirname, 'mcp.ts'), 'utf8');
+
+test('the API refuses an MCP move into a done-kind list, whatever its title', () => {
+  assert.match(boardSource, /col\.kind === 'done' && viaMcp\(req\)/);
+  assert.match(boardSource, /Agents must not move a card to Done/);
+  assert.match(boardSource, /Under Review/);
 });
 
-test('update_status rejects Done with advice, and never advertises it', () => {
-  const parsed = agentColumn.safeParse('Done');
-  assert.equal(parsed.success, false);
-  if (!parsed.success) assert.equal(parsed.error.issues[0].message, DONE_ADVICE);
-
-  // 'Done' must not be in the schema the model is shown, or it will keep trying.
-  const values = (agentColumn as unknown as { _def: { values: string[] } })._def.values;
-  assert.ok(!values.includes('Done'), `schema exposes ${values.join(', ')}`);
-  assert.deepEqual(values, ['Todo', 'Doing']);
-});
-
-test('update_status rejects an unknown list with the same advice', () => {
-  const parsed = agentColumn.safeParse('Shipped');
-  assert.equal(parsed.success, false);
-  if (!parsed.success) {
-    assert.match(parsed.error.issues[0].message, /under-review/);
-    assert.match(parsed.error.issues[0].message, /never mark a card Done/);
-  }
+test('the MCP no longer re-implements the Done rule by title', () => {
+  assert.doesNotMatch(mcpSource, /isDoneTitle/);
+  assert.match(mcpSource, /Never move a card into a Done list/);
 });
 
 // --- wiring -------------------------------------------------------------------
-//
-// The tests above pin the rules themselves. These two pin that mcp.ts actually
-// calls them, since mcp.ts runs a stdio server on import and cannot be imported
-// by a unit test. A cheap source check beats nothing.
-
-const mcpSource = readFileSync(join(__dirname, 'mcp.ts'), 'utf8');
 
 test('mcp.ts resolves today through todayInTz, not the UTC date', () => {
   assert.match(mcpSource, /date:\s*todayInTz\(\)/);
   // `new Date().toISOString().slice(0, 10)` is the bug from issue #1.
   assert.doesNotMatch(mcpSource, /toISOString\(\)\.slice\(0,\s*10\)/);
-});
-
-test('mcp.ts refuses Done at runtime and points agents at Under Review', () => {
-  // The HTTP tool takes a column title, so a Zod enum no longer fences it;
-  // the guard must run before the PATCH is sent.
-  assert.match(mcpSource, /isDoneTitle\(column\)/);
-  assert.match(mcpSource, /Agents must not move a card to Done/);
-  assert.match(mcpSource, /Under Review/);
 });

@@ -1,10 +1,18 @@
 import { prisma } from './db';
 import type { PrismaClient } from '@prisma/client';
 import { toDateString } from './validate';
+import {
+  COLUMN_TITLES,
+  deriveAgentState,
+  isColumnKind,
+  type AgentState,
+  type ColumnKind,
+} from './column-kinds';
 
 export interface BoardColumnDTO {
   id: string;
   title: string;
+  kind: ColumnKind;
 }
 
 export interface BoardTaskDTO {
@@ -17,7 +25,7 @@ export interface BoardTaskDTO {
   tags: string[];
   archived: boolean;
   projectKey: string;
-  agentState: 'idle' | 'running' | 'under-review' | 'completed';
+  agentState: AgentState;
   gitEnabled: boolean;
   branch: string | null;
   lastCommit: string | null;
@@ -31,15 +39,35 @@ export interface BoardDTO {
 }
 
 const PRIORITIES = new Set(['low', 'medium', 'high']);
-const AGENT_STATES = new Set(['idle', 'running', 'under-review', 'completed']);
 
 export async function getBoardState(userId: string): Promise<BoardDTO> {
   const [columns, tasks] = await Promise.all([
-    prisma.column.findMany({ where: { userId }, orderBy: { position: 'asc' } }),
-    prisma.task.findMany({ where: { userId }, orderBy: { position: 'asc' } }),
+    prisma.column.findMany({
+      where: { userId },
+      // position is authoritative; the rest is a deterministic tiebreak so two
+      // rows written in the same millisecond cannot swap places between reads.
+      orderBy: [{ position: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
+    }),
+    prisma.task.findMany({
+      where: { userId },
+      orderBy: [{ position: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
+      include: {
+        runs: {
+          orderBy: { startedAt: 'desc' },
+          take: 1,
+          select: { status: true },
+        },
+      },
+    }),
   ]);
+  const kindById = new Map<string, ColumnKind>();
+  const outColumns = columns.map((c) => {
+    const kind: ColumnKind = isColumnKind(c.kind) ? c.kind : 'active';
+    kindById.set(c.id, kind);
+    return { id: c.id, title: c.title, kind };
+  });
   return {
-    columns: columns.map((c) => ({ id: c.id, title: c.title })),
+    columns: outColumns,
     tasks: tasks.map((t) => ({
       id: t.id,
       columnId: t.columnId,
@@ -50,9 +78,7 @@ export async function getBoardState(userId: string): Promise<BoardDTO> {
       tags: t.tags,
       archived: t.archived,
       projectKey: t.projectKey ?? '',
-      agentState: (
-        AGENT_STATES.has(t.agentState) ? t.agentState : 'idle'
-      ) as BoardTaskDTO['agentState'],
+      agentState: deriveAgentState(kindById.get(t.columnId) ?? 'active', t.runs[0]?.status),
       gitEnabled: t.gitEnabled ?? false,
       branch: t.branch ?? null,
       lastCommit: t.lastCommit ?? null,
@@ -63,7 +89,10 @@ export async function getBoardState(userId: string): Promise<BoardDTO> {
 }
 
 /**
- * Default Todo/Doing/Done + welcome task. Used on register and board reset.
+ * Default four lists + welcome task. Used on register, board reset and import.
+ *
+ * The lists are fixed by kind, not by title: Todo, Doing, Under Review, Done.
+ * The user may rename or reorder them, but cannot add a fifth.
  *
  * Takes an optional transaction client so callers that are already inside a
  * transaction (board reset) do not open a second one — two concurrent
@@ -75,9 +104,18 @@ export async function seedDefaults(
   db: Pick<PrismaClient, 'column' | 'task' | 'taskEvent'> = prisma,
 ): Promise<void> {
   const now = new Date();
-  const todo = await db.column.create({ data: { userId, title: 'Todo', position: 0 } });
-  await db.column.create({ data: { userId, title: 'Doing', position: 1 } });
-  await db.column.create({ data: { userId, title: 'Done', position: 2 } });
+  const todo = await db.column.create({
+    data: { userId, title: COLUMN_TITLES.todo, kind: 'todo', position: 0 },
+  });
+  await db.column.create({
+    data: { userId, title: COLUMN_TITLES.active, kind: 'active', position: 1 },
+  });
+  await db.column.create({
+    data: { userId, title: COLUMN_TITLES.review, kind: 'review', position: 2 },
+  });
+  await db.column.create({
+    data: { userId, title: COLUMN_TITLES.done, kind: 'done', position: 3 },
+  });
   const welcome = await db.task.create({
     data: {
       userId,

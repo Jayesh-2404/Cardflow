@@ -15,6 +15,7 @@ model User {
   createdAt    DateTime  @default(now())
   columns      Column[]
   tasks        Task[]
+  runs         TaskRun[]
   sessions     Session[]
 }
 
@@ -43,10 +44,14 @@ model Column {
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   title     String
+  // One of todo | active | review | done. The kind, not the title, decides
+  // where an agent may move a card, so a renamed list keeps its meaning.
+  kind      String   @default("active")
   position  Int      @default(0)
   createdAt DateTime @default(now())
   tasks     Task[]
 
+  @@unique([userId, kind])
   @@index([userId, position])
 }
 
@@ -64,15 +69,49 @@ model Task {
   archived    Boolean   @default(false)
   position    Int       @default(0)
   projectKey  String    @default("")
-  agentState  String    @default("idle")
   gitEnabled  Boolean   @default(false)
   branch      String?
   lastCommit  String?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
+  runs        TaskRun[]
 
   @@index([userId, columnId, position])
   @@index([userId, dueDate])
+}
+
+/*
+  One attempt by one agent. A task can have many runs over its life; the latest
+  unfinished run is what the board shows as "an agent is on this". Keeping runs
+  separate preserves history when a claim is abandoned and retried, and lets the
+  UI report runner, model and elapsed time without stuffing them onto Task.
+
+  status: claimed (worktree ready, no edit yet) | running | review (PR open) |
+          completed (human closed it) | failed | abandoned (released)
+*/
+model TaskRun {
+  id          String    @id @default(cuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  taskId      String
+  task        Task      @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  status      String    @default("claimed")
+  runner      String    @default("opencode")
+  model       String?
+  branch      String?
+  worktree    String?
+  prUrl       String?
+  prNumber    Int?
+  startedAt   DateTime  @default(now())
+  heartbeatAt DateTime  @default(now())
+  finishedAt  DateTime?
+  elapsedMs   Int?
+  error       String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([userId, status])
+  @@index([taskId, startedAt])
 }
 
 /*

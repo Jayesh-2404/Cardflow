@@ -588,7 +588,6 @@ export default function App() {
         columnId: draft.columnId,
         projectKey,
         gitEnabled: draft.gitEnabled,
-        agentState: draft.agentState,
       };
       const optimistic: BoardState = {
         ...board,
@@ -604,7 +603,6 @@ export default function App() {
           columnId: next.columnId,
           projectKey: next.projectKey,
           gitEnabled: next.gitEnabled,
-          agentState: next.agentState,
         }),
         optimistic,
       );
@@ -963,12 +961,6 @@ export default function App() {
     setDrag(IDLE_DRAG);
   }, []);
 
-  function addList() {
-    if (!board) return;
-    const title = `List ${board.columns.length + 1}`;
-    void commit(api.createColumn(title));
-  }
-
   function exportJson() {
     if (!board) return;
     const payload = { ...board, events: journal.events };
@@ -1064,11 +1056,6 @@ export default function App() {
 
   function renameCol(columnId: string, title: string) {
     void commit(api.renameColumn(columnId, title));
-  }
-
-  function deleteCol(columnId: string) {
-    if (!window.confirm('Delete this list? Its tasks move to the first list.')) return;
-    void commit(api.deleteColumn(columnId));
   }
 
   const dragging = drag.phase === 'idle' ? null : drag;
@@ -1236,18 +1223,9 @@ export default function App() {
                       onOpenTask={setEditing}
                       onQuickAdd={quickAdd}
                       onRename={renameCol}
-                      onDelete={deleteCol}
                     />
                   ))}
                 </SortableContext>
-                <button
-                  onClick={addList}
-                  data-testid="add-list"
-                  className="flex h-24 w-[235px] shrink-0 snap-start flex-col items-center justify-center gap-1.5 self-start rounded-[var(--kb-r-xl)] border border-dashed kb-border text-[13px] text-kb-muted transition-colors duration-150 ease-[var(--kb-ease)] hover:border-[var(--kb-border-strong)] hover:bg-[var(--kb-sunken)] hover:text-kb-text sm:w-[343px]"
-                >
-                  <Icon name="plus" size={16} />
-                  Add list
-                </button>
               </motion.div>
 
               {/*
@@ -1320,7 +1298,6 @@ export default function App() {
             setCreating(false);
             setEditing(t);
           }}
-          onAddList={addList}
           onOpenPanel={openPanel}
           onToggleTheme={() => setTheme((t) => (t === 'light' ? 'dark' : 'light'))}
           onExport={exportJson}

@@ -16,7 +16,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 import type { BoardDTO } from './board';
-import { isDoneTitle, selectOpenTasks, todayInTz } from './mcp-filters';
+import { selectOpenTasks, todayInTz } from './mcp-filters';
 
 // OpenCode spawns us from the board root; our .env lives next to this package.
 loadEnv({ path: join(__dirname, '..', '.env') });
@@ -203,7 +203,7 @@ server.tool('get_task', 'Full task by id.', { id: z.string() }, async ({ id }) =
 
 server.tool(
   'update_status',
-  "Move task between Todo/Doing/Under Review via column title and set agent state. Never mark a card Done — use agentState 'under-review' and let a human close it. Journalled like the REST API.",
+  "Move a task between lists by exact list title. Never move a card into a Done list — put it in Under Review and let a human close it. Journalled like the REST API.",
   {
     id: z.string(),
     column: z.string().min(1).max(60).optional(),
@@ -212,11 +212,6 @@ server.tool(
     lastCommit: z.string().regex(/^[0-9a-f]{7,40}$/i).optional(),
   },
   async ({ id, column, agentState, branch, lastCommit }) => {
-    if (column !== undefined && isDoneTitle(column)) {
-      throw new Error(
-        "Agents must not move a card to Done. Move it to 'Under Review' and let a human close it.",
-      );
-    }
     const body: Record<string, unknown> = {};
     if (column !== undefined) body.column = column;
     if (agentState !== undefined) body.agentState = agentState;

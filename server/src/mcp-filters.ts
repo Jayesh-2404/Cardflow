@@ -6,7 +6,6 @@
  * Type-only imports are erased at compile time, so pulling in the board DTOs
  * does not drag `./db` (and its connection) along.
  */
-import { z } from 'zod';
 import type { BoardColumnDTO, BoardTaskDTO } from './board';
 
 /** Due dates are stored and compared as plain yyyy-mm-dd in the owner's local day. */
@@ -46,13 +45,12 @@ export function todayInTz(
   }
 }
 
-/** Lists are user-editable (add/rename/delete), so match the title loosely. */
-export function isDoneTitle(title: string): boolean {
-  return title.trim().toLowerCase() === 'done';
-}
-
+/**
+ * Ids of lists with the `done` kind. The title is user-editable, so matching it
+ * would let a renamed Done list leak finished cards back into an agent queue.
+ */
 export function doneColumnIds(columns: BoardColumnDTO[]): Set<string> {
-  return new Set(columns.filter((c) => isDoneTitle(c.title)).map((c) => c.id));
+  return new Set(columns.filter((c) => c.kind === 'done').map((c) => c.id));
 }
 
 export interface SelectOptions {
@@ -90,15 +88,3 @@ export function selectOpenTasks({
     .sort((a, b) => (RANK[a.priority] ?? 1) - (RANK[b.priority] ?? 1))
     .slice(0, limit);
 }
-
-export const DONE_ADVICE =
-  "column must be 'Todo' or 'Doing'. Agents must never mark a card Done — move it to Doing and set agentState to 'under-review'; a human closes the card from the board.";
-
-/**
- * Columns an agent may move a card to. 'Done' is absent on purpose: it should
- * not appear in the schema the model is shown, or the model will keep trying.
- * The errorMap is for the case where it tries anyway.
- */
-export const agentColumn = z.enum(['Todo', 'Doing'], {
-  errorMap: () => ({ message: DONE_ADVICE }),
-});

@@ -12,6 +12,14 @@ import {
   validPriority,
 } from '../validate';
 import { getBoardState, seedDefaults } from '../board';
+import {
+  COLUMN_KINDS,
+  COLUMN_TITLES,
+  isColumnKind,
+  kindFromTitle,
+  type AgentState,
+  type ColumnKind,
+} from '../column-kinds';
 import { addClient, bump, versionFor } from '../realtime';
 import {
   countsFor,
@@ -32,6 +40,24 @@ export const boardRouter = Router();
 function uid(req: unknown): string {
   return (req as AuthedRequest).userId;
 }
+
+const DONE_REFUSAL =
+  "Agents must not move a card to Done. Move it to 'Under Review' and let a human close it.";
+
+/** Board handlers are shared by the browser and the agent; this tells them apart. */
+function viaMcp(req: unknown): boolean {
+  return (req as AuthedRequest).viaMcp === true;
+}
+
+/**
+ * Options for interactive transactions.
+ *
+ * An interactive transaction holds one pooled connection for its whole life.
+ * On Neon a cold handshake is ~3.7s and every statement is a round trip, so a
+ * reset (3 deletes + 7 creates) or a large import can outlive Prisma's 5s
+ * default and fail with P2028 "transaction not found". 20s is still bounded.
+ */
+const TX = { timeout: 20_000, maxWait: 5_000 };
 
 async function renumberColumn(userId: string, columnId: string): Promise<void> {
   const tasks = await prisma.task.findMany({
@@ -245,19 +271,15 @@ boardRouter.post('/tasks/:id/notes', async (req, res) => {
   });
 });
 
-boardRouter.post('/columns', async (req, res) => {
-  const userId = uid(req);
-  const { title } = req.body as { title?: unknown };
-  if (typeof title !== 'string' || !title.trim() || title.length > 60) {
-    res.status(400).json({ error: 'title required (max 60 chars)' });
-    return;
-  }
-  const count = await prisma.column.count({ where: { userId } });
-  await prisma.column.create({
-    data: { userId, title: title.trim(), position: count },
+/**
+ * Lists are fixed. The four kinds are created at register/reset/import time and
+ * can be renamed or reordered, but never added or removed: an agent queue with
+ * one "Done" is only trustworthy if there is exactly one of each kind.
+ */
+boardRouter.post('/columns', (_req, res) => {
+  res.status(405).json({
+    error: 'Lists are fixed: Todo, Doing, Under Review, Done. Rename or reorder them instead.',
   });
-  bump(userId);
-  res.status(201).json({ board: await getBoardState(userId) });
 });
 
 /**
@@ -355,31 +377,10 @@ boardRouter.patch('/columns/:id', async (req, res) => {
   res.json({ board: await getBoardState(userId) });
 });
 
-boardRouter.delete('/columns/:id', async (req, res) => {
-  const userId = uid(req);
-  const cols = await prisma.column.findMany({ where: { userId }, orderBy: { position: 'asc' } });
-  if (cols.length <= 1) {
-    res.status(400).json({ error: 'cannot delete the last list' });
-    return;
-  }
-  const target = cols.find((c) => c.id === req.params.id);
-  if (!target) {
-    res.status(404).json({ error: 'not found' });
-    return;
-  }
-  const fallback = cols.find((c) => c.id !== target.id);
-  if (!fallback) {
-    res.status(400).json({ error: 'cannot delete the last list' });
-    return;
-  }
-  await prisma.task.updateMany({
-    where: { userId, columnId: target.id },
-    data: { columnId: fallback.id },
+boardRouter.delete('/columns/:id', (_req, res) => {
+  res.status(405).json({
+    error: 'Lists are fixed: Todo, Doing, Under Review, Done. Rename or reorder them instead.',
   });
-  await prisma.column.delete({ where: { id: target.id } });
-  await renumberColumn(userId, fallback.id);
-  bump(userId);
-  res.json({ board: await getBoardState(userId) });
 });
 
 boardRouter.post('/tasks', async (req, res) => {
@@ -499,7 +500,6 @@ boardRouter.patch('/tasks/:id', async (req, res) => {
     columnId?: string;
     position?: number;
     projectKey?: string;
-    agentState?: string;
     gitEnabled?: boolean;
     branch?: string | null;
     lastCommit?: string | null;
@@ -542,12 +542,22 @@ boardRouter.patch('/tasks/:id', async (req, res) => {
     }
     data.projectKey = key;
   }
+  // `agentState` is no longer stored; it is derived from the list and the
+  // latest run. Old callers (the MCP until Phase 3) still send it, so translate
+  // its two meaningful transitions onto the fixed lists instead of ignoring
+  // them. 'completed' is refused: that would be Done by the back door.
+  let legacyKind: ColumnKind | null = null;
   if (agentState !== undefined) {
     if (!validAgentState(agentState)) {
       res.status(400).json({ error: 'bad agentState' });
       return;
     }
-    data.agentState = agentState;
+    if (agentState === 'completed') {
+      res.status(403).json({ error: DONE_REFUSAL });
+      return;
+    }
+    if (agentState === 'under-review') legacyKind = 'review';
+    else if (agentState === 'running') legacyKind = 'active';
   }
   if (gitEnabled !== undefined) {
     if (typeof gitEnabled !== 'boolean') {
@@ -603,6 +613,13 @@ boardRouter.patch('/tasks/:id', async (req, res) => {
     }
     targetColumnId = byTitle.id;
   }
+  if (targetColumnId === undefined && legacyKind) {
+    const byKind = await prisma.column.findFirst({
+      where: { userId, kind: legacyKind },
+      select: { id: true },
+    });
+    if (byKind) targetColumnId = byKind.id;
+  }
   if (targetColumnId !== undefined) {
     if (typeof targetColumnId !== 'string') {
       res.status(400).json({ error: 'bad columnId' });
@@ -611,6 +628,10 @@ boardRouter.patch('/tasks/:id', async (req, res) => {
     const col = await prisma.column.findFirst({ where: { id: targetColumnId, userId } });
     if (!col) {
       res.status(404).json({ error: 'column not found' });
+      return;
+    }
+    if (col.kind === 'done' && viaMcp(req)) {
+      res.status(403).json({ error: DONE_REFUSAL });
       return;
     }
     if (targetColumnId !== task.columnId) {
@@ -639,8 +660,6 @@ boardRouter.patch('/tasks/:id', async (req, res) => {
     changed.push(FIELD_LABELS.archived);
   if (data.projectKey !== undefined && data.projectKey !== task.projectKey)
     changed.push(FIELD_LABELS.projectKey);
-  if (data.agentState !== undefined && data.agentState !== task.agentState)
-    changed.push(FIELD_LABELS.agentState);
   if (data.gitEnabled !== undefined && data.gitEnabled !== task.gitEnabled)
     changed.push(FIELD_LABELS.gitEnabled);
   if (data.branch !== undefined && data.branch !== task.branch) changed.push(FIELD_LABELS.branch);
@@ -669,30 +688,6 @@ boardRouter.patch('/tasks/:id', async (req, res) => {
       taskTitle: data.title ?? task.title,
       type: data.archived === true ? 'archived' : data.archived === false ? 'unarchived' : 'updated',
       summary: `Updated ${changed.join(', ')}`,
-    });
-  }
-  if (data.agentState !== undefined && data.agentState !== task.agentState) {
-    const type =
-      data.agentState === 'running'
-        ? 'agent-started'
-        : data.agentState === 'under-review'
-          ? 'agent-review'
-          : data.agentState === 'completed'
-            ? 'agent-completed'
-            : 'updated';
-    await record({
-      userId,
-      taskId: task.id,
-      taskTitle: data.title ?? task.title,
-      type,
-      summary:
-        data.agentState === 'running'
-          ? 'Agent started work'
-          : data.agentState === 'under-review'
-            ? 'Agent requested review'
-            : data.agentState === 'completed'
-              ? 'Marked completed after review'
-              : `Agent state → ${data.agentState}`,
     });
   }
   if (data.lastCommit !== undefined && data.lastCommit && data.lastCommit !== task.lastCommit) {
@@ -724,6 +719,10 @@ boardRouter.post('/tasks/:id/move', async (req, res) => {
   const col = await prisma.column.findFirst({ where: { id: columnId, userId } });
   if (!col) {
     res.status(404).json({ error: 'column not found' });
+    return;
+  }
+  if (col.kind === 'done' && viaMcp(req)) {
+    res.status(403).json({ error: DONE_REFUSAL });
     return;
   }
   const fromColumn = task.columnId;
@@ -780,7 +779,7 @@ boardRouter.delete('/tasks/:id', async (req, res) => {
 
 /** Shape accepted by import. Server-assigned fields (createdAt) are ignored. */
 interface ParsedBoard {
-  columns: { id: string; title: string }[];
+  columns: { id: string; title: string; kind: ColumnKind }[];
   tasks: {
     id: string;
     columnId: string;
@@ -791,7 +790,7 @@ interface ParsedBoard {
     tags: string[];
     archived: boolean;
     projectKey: string;
-    agentState: 'idle' | 'running' | 'under-review' | 'completed';
+    agentState: AgentState;
     gitEnabled: boolean;
     branch: string | null;
     lastCommit: string | null;
@@ -812,21 +811,49 @@ boardRouter.post('/replace', async (req, res) => {
     await tx.taskEvent.deleteMany({ where: { userId } });
     await tx.task.deleteMany({ where: { userId } });
     await tx.column.deleteMany({ where: { userId } });
-    for (let i = 0; i < parsed.columns.length; i++) {
-      const c = parsed.columns[i];
-      await tx.column.create({
-        data: { id: c.id, userId, title: c.title, position: i },
-      });
+
+    // The payload may carry any list names from an older board. Collapse them
+    // onto the four fixed kinds, keeping the first title seen for each so a
+    // renamed list survives the round trip. Missing kinds get their default
+    // title, so importing a three-list backup still produces a whole board.
+    const titleByKind = new Map<ColumnKind, string>();
+    for (const c of parsed.columns) {
+      if (!titleByKind.has(c.kind)) titleByKind.set(c.kind, c.title);
     }
-    const byCol = new Map<string, number>();
+    const idByKind = new Map<ColumnKind, string>();
+    for (let i = 0; i < COLUMN_KINDS.length; i += 1) {
+      const kind = COLUMN_KINDS[i];
+      const created = await tx.column.create({
+        data: {
+          userId,
+          title: titleByKind.get(kind) ?? COLUMN_TITLES[kind],
+          kind,
+          position: i,
+        },
+      });
+      idByKind.set(kind, created.id);
+    }
+
+    const kindOfColumn = new Map(parsed.columns.map((c) => [c.id, c.kind]));
+    const byKind = new Map<ColumnKind, number>();
     for (const t of parsed.tasks) {
-      const pos = byCol.get(t.columnId) ?? 0;
-      byCol.set(t.columnId, pos + 1);
-      await tx.task.create({
+      // Old exports used agentState as a status independent of the list. Where
+      // it names a terminal list, it is the more specific signal, so it wins;
+      // otherwise the card keeps the kind of the list it was in.
+      const fromColumn = kindOfColumn.get(t.columnId) ?? 'active';
+      const kind: ColumnKind =
+        t.agentState === 'under-review'
+          ? 'review'
+          : t.agentState === 'completed'
+            ? 'done'
+            : fromColumn;
+      const pos = byKind.get(kind) ?? 0;
+      byKind.set(kind, pos + 1);
+      const created = await tx.task.create({
         data: {
           id: t.id,
           userId,
-          columnId: t.columnId,
+          columnId: idByKind.get(kind) as string,
           title: t.title,
           description: t.description,
           priority: t.priority,
@@ -835,12 +862,24 @@ boardRouter.post('/replace', async (req, res) => {
           archived: t.archived,
           position: pos,
           projectKey: t.projectKey,
-          agentState: t.agentState,
           gitEnabled: t.gitEnabled,
           branch: t.branch,
           lastCommit: t.lastCommit,
         },
       });
+      // A card that was mid-run keeps its badge; runner 'unknown' is honest
+      // about the old schema never recording which agent it was.
+      if (t.agentState === 'running') {
+        await tx.taskRun.create({
+          data: {
+            userId,
+            taskId: created.id,
+            status: 'running',
+            runner: 'unknown',
+            branch: t.branch,
+          },
+        });
+      }
     }
     // Journal travels with the backup, oldest first, so ordering is preserved.
     for (const e of parsedEvents) {
@@ -858,7 +897,7 @@ boardRouter.post('/replace', async (req, res) => {
         },
       });
     }
-  });
+  }, TX);
   bump(userId);
   res.json({ board: await getBoardState(userId) });
 });
@@ -909,11 +948,15 @@ function parseBoardPayload(board: unknown): ParsedBoard | null {
   const cleanCols: ParsedBoard['columns'] = [];
   for (const c of columns) {
     if (typeof c !== 'object' || c === null) return null;
-    const { id, title } = c as { id?: unknown; title?: unknown };
+    const { id, title, kind } = c as { id?: unknown; title?: unknown; kind?: unknown };
     if (typeof id !== 'string' || typeof title !== 'string' || !title.trim()) return null;
     if (colIds.has(id)) return null;
     colIds.add(id);
-    cleanCols.push({ id: id.slice(0, 60), title: title.trim().slice(0, 60) });
+    cleanCols.push({
+      id: id.slice(0, 60),
+      title: title.trim().slice(0, 60),
+      kind: isColumnKind(kind) ? kind : kindFromTitle(title),
+    });
   }
   const cleanTasks: ParsedBoard['tasks'] = [];
   const seen = new Set<string>();
@@ -962,11 +1005,14 @@ function parseBoardPayload(board: unknown): ParsedBoard | null {
 /** Erase everything (columns + tasks + journal). */
 boardRouter.delete('/', async (req, res) => {
   const userId = uid(req);
-  await prisma.$transaction(async (tx) => {
-    await tx.taskEvent.deleteMany({ where: { userId } });
-    await tx.task.deleteMany({ where: { userId } });
-    await tx.column.deleteMany({ where: { userId } });
-  });
+  await prisma.$transaction(
+    async (tx) => {
+      await tx.taskEvent.deleteMany({ where: { userId } });
+      await tx.task.deleteMany({ where: { userId } });
+      await tx.column.deleteMany({ where: { userId } });
+    },
+    TX,
+  );
   bump(userId);
   res.json({ board: await getBoardState(userId) });
 });
@@ -976,12 +1022,15 @@ boardRouter.post('/reset', async (req, res) => {
   const userId = uid(req);
   // One transaction for wipe + seed: two interactive transactions in a row
   // exhaust the pooled connection and fail with P2028.
-  await prisma.$transaction(async (tx) => {
-    await tx.taskEvent.deleteMany({ where: { userId } });
-    await tx.task.deleteMany({ where: { userId } });
-    await tx.column.deleteMany({ where: { userId } });
-    await seedDefaults(userId, tx);
-  });
+  await prisma.$transaction(
+    async (tx) => {
+      await tx.taskEvent.deleteMany({ where: { userId } });
+      await tx.task.deleteMany({ where: { userId } });
+      await tx.column.deleteMany({ where: { userId } });
+      await seedDefaults(userId, tx);
+    },
+    TX,
+  );
   bump(userId);
   res.json({ board: await getBoardState(userId) });
 });

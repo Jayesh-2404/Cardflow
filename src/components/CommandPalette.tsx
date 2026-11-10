@@ -20,7 +20,6 @@ interface Props {
   onClose: () => void;
   onNewTask: (columnId: string) => void;
   onOpenTask: (task: Task) => void;
-  onAddList: () => void;
   onOpenPanel: (p: 'filters' | 'archive' | 'settings' | 'journal') => void;
   onToggleTheme: () => void;
   onExport: () => void;
@@ -60,7 +59,6 @@ export default function CommandPalette(props: Props) {
         hint: 'N',
         run: () => props.onNewTask(firstColumn),
       },
-      { id: 'add-list', label: 'Add list', group: 'Actions', icon: 'plus', run: props.onAddList },
       {
         id: 'journal',
         label: 'Open journal',

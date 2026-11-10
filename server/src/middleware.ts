@@ -5,6 +5,8 @@ import { tokenMatches } from './mcp-auth';
 
 export interface AuthedRequest extends Request {
   userId: string;
+  /** True when the request arrived through the MCP bearer door. */
+  viaMcp?: boolean;
 }
 
 export function requireAuth(req: Request, res: Response, next: NextFunction): void {
@@ -42,5 +44,8 @@ export function requireMcpAuth(req: Request, res: Response, next: NextFunction):
     return;
   }
   (req as AuthedRequest).userId = env.mcpUserId;
+  // Board handlers use this to refuse agent moves into a Done-kind list without
+  // blocking the human UI, which shares the same code.
+  (req as AuthedRequest).viaMcp = true;
   next();
 }

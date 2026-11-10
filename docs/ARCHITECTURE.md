@@ -20,8 +20,9 @@ Defined in server/prisma/schema.prisma.
 
 - **User.** id, email (unique), passwordHash, createdAt.
 - **Session.** One row per signed-in device: userId, tokenHash (unique), createdAt, expiresAt. Sessions used to be a single column on User, which logged the first browser out whenever a second one signed in. Now they coexist, and refresh rotation touches only the row in use.
-- **Column.** userId, title, position. Indexed on (userId, position).
-- **Task.** userId, columnId, title, description, priority, dueDate, tags[], archived, position, plus the agent fields: projectKey, agentState, gitEnabled, branch, lastCommit.
+- **Column.** Exactly four per user: `kind` is one of `todo | active | review | done`, unique per user. `title` and `position` are user-editable, so a renamed or reordered list keeps its meaning. Indexed on (userId, position).
+- **Task.** userId, columnId, title, description, priority, dueDate, tags[], archived, position, plus the agent fields: projectKey, gitEnabled, branch, lastCommit. The old stored agentState is gone; the API derives it from the list kind and the latest run.
+- **TaskRun.** One row per agent attempt: status (claimed, running, review, completed, failed, abandoned), runner, model, branch, worktree, PR URL/number, startedAt, heartbeatAt, finishedAt, elapsedMs, error. A task can have many runs; the latest unfinished one is what the board shows.
 - **TaskEvent.** The journal. userId, taskId, taskTitle, type, summary, detail?, fromColumn?, toColumn?, createdAt.
 
 ### Why TaskEvent has no foreign key to Task
@@ -59,8 +60,8 @@ created, updated, moved, archived, unarchived, note, deleted, agent-started, age
 - Auth: `KANBAN_MCP_TOKEN` (static, 32+ chars) in the `Authorization: Bearer` header, plus `KANBAN_MCP_USER_ID` on the server. The token names no user; the API fixes the owner from its own env. `/api/mcp/health` answers `503` until both are set.
 - `board_health` checks the API, database, owner account, SSE client count and every local project root. It is the first tool to call when any other tool fails.
 - Tools: board_health, list_today, list_by_date, get_task, update_status, add_note, delete_note, prune_journal.
-- list_today and list_by_date skip cards in a Done list. list_by_date takes includeDone: true to see them anyway.
-- update_status takes a list title. It refuses Done at runtime and tells the model to set agentState to under-review and leave the card for a human.
+- list_today and list_by_date skip cards in a Done-kind list, even if that list was renamed. list_by_date takes includeDone: true to see them anyway.
+- update_status takes a list title. The API refuses an MCP move into a Done-kind list and tells the model to use Under Review and leave the card for a human.
 - "Today" resolves in the KANBAN_TZ timezone (default Asia/Kolkata), because between 00:00 and 05:30 IST the UTC date is still yesterday.
 - Project keys map to local paths through server/project-roots.json (gitignored). The MCP checks those paths locally; the API never learns them.
 - Every write goes through the API, so agent moves and notes appear in the same journal and SSE stream as yours.
