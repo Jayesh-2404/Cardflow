@@ -232,6 +232,10 @@ export default function App() {
     wrong place.
   */
   const dragRef = useRef<DragSession>(IDLE_DRAG);
+  // Sequence board reads so a slow refetch cannot overwrite a newer board.
+  const boardReq = useRef(0);
+  // Sequence mutations so a slow response cannot undo a later edit.
+  const commitSeq = useRef(0);
   // Board data for handlers that run outside a render (the key step handler):
   // effects below keep them one commit fresh, which every event is behind.
   const boardRef = useRef<BoardState | null>(null);
@@ -301,9 +305,15 @@ export default function App() {
     if (!user) return;
     const stop = subscribeBoard(
       () => {
+        // A drag owns the board until it lands. A push that arrives mid-drag
+        // would move the card under the pointer, so read it after the drop.
+        if (dragRef.current.phase !== 'idle') return;
+        const n = ++boardReq.current;
         api
           .getBoard()
-          .then((b) => setBoard(b))
+          .then((b) => {
+            if (n === boardReq.current) setBoard(b);
+          })
           .catch(() => {});
         void refreshJournal();
       },
@@ -528,13 +538,21 @@ export default function App() {
 
   /** Run a mutation: optimistic update, send to server, reconcile with server board. */
   async function commit(call: Promise<BoardState>, optimistic?: BoardState) {
+    const seq = ++commitSeq.current;
     if (optimistic) setBoard(optimistic);
     try {
-      setBoard(await call);
+      const next = await call;
+      // A later edit already owns the board; this response is history.
+      if (seq !== commitSeq.current) return;
+      boardReq.current += 1;
+      setBoard(next);
     } catch (err) {
       window.alert(err instanceof ApiError ? err.message : 'Sync failed');
       try {
-        setBoard(await api.getBoard());
+        const next = await api.getBoard();
+        if (seq !== commitSeq.current) return;
+        boardReq.current += 1;
+        setBoard(next);
       } catch {
         // keep optimistic state
       }
