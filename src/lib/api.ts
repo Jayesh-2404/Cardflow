@@ -1,4 +1,13 @@
-import type { AgentState, BoardState, ColumnKind, Priority } from '../types';
+import type {
+  AgentState,
+  BoardState,
+  ColumnKind,
+  Priority,
+  Project,
+  RunStatus,
+  TaskRun,
+} from '../types';
+
 
 export const API_BASE = (
   (import.meta.env.VITE_API_URL as string | undefined) || 'http://localhost:4000'
@@ -10,6 +19,22 @@ export class ApiError extends Error {
     super(message);
     this.status = status;
   }
+}
+
+interface ServerRun {
+  id: string;
+  status: string;
+  runner: string;
+  model: string | null;
+  branch: string | null;
+  worktree: string | null;
+  prUrl: string | null;
+  prNumber: number | null;
+  startedAt: string;
+  heartbeatAt: string;
+  finishedAt: string | null;
+  elapsedMs: number | null;
+  error: string | null;
 }
 
 interface ServerBoard {
@@ -28,6 +53,7 @@ interface ServerBoard {
     gitEnabled: boolean;
     branch: string | null;
     lastCommit: string | null;
+    run: ServerRun | null;
     createdAt: string;
     updatedAt: string;
   }[];
@@ -69,6 +95,34 @@ export interface JournalEvent {
 const PRIORITIES: Priority[] = ['low', 'medium', 'high'];
 const COLUMN_KINDS: ColumnKind[] = ['todo', 'active', 'review', 'done'];
 const AGENT_STATES: AgentState[] = ['idle', 'running', 'under-review', 'completed'];
+const RUN_STATUSES: RunStatus[] = [
+  'claimed',
+  'running',
+  'review',
+  'completed',
+  'failed',
+  'abandoned',
+];
+
+function parseRun(run: ServerRun): TaskRun {
+  return {
+    id: run.id,
+    status: (RUN_STATUSES.includes(run.status as RunStatus)
+      ? run.status
+      : 'running') as RunStatus,
+    runner: typeof run.runner === 'string' && run.runner ? run.runner : 'agent',
+    model: typeof run.model === 'string' ? run.model : null,
+    branch: typeof run.branch === 'string' ? run.branch : null,
+    worktree: typeof run.worktree === 'string' ? run.worktree : null,
+    prUrl: typeof run.prUrl === 'string' ? run.prUrl : null,
+    prNumber: typeof run.prNumber === 'number' ? run.prNumber : null,
+    startedAt: toMillis(run.startedAt),
+    heartbeatAt: toMillis(run.heartbeatAt),
+    finishedAt: run.finishedAt ? toMillis(run.finishedAt) : null,
+    elapsedMs: typeof run.elapsedMs === 'number' ? run.elapsedMs : null,
+    error: typeof run.error === 'string' ? run.error : null,
+  };
+}
 
 const toMillis = (iso: string | undefined): number => {
   const n = iso ? Date.parse(iso) : NaN;
@@ -99,6 +153,7 @@ export function fromServer(b: ServerBoard): BoardState {
       gitEnabled: t.gitEnabled === true,
       branch: typeof t.branch === 'string' ? t.branch : null,
       lastCommit: typeof t.lastCommit === 'string' ? t.lastCommit : null,
+      run: t.run ? parseRun(t.run) : null,
       createdAt: toMillis(t.createdAt),
       updatedAt: toMillis(t.updatedAt),
     })),
@@ -263,6 +318,32 @@ export const api = {
   },
   async deleteTask(id: string): Promise<BoardState> {
     return fromServer((await req<BoardResponse>(`/api/board/tasks/${id}`, { method: 'DELETE' })).board);
+  },
+  async releaseTask(id: string): Promise<BoardState> {
+    return fromServer(
+      (await req<BoardResponse>(`/api/board/tasks/${id}/release`, body({}))).board,
+    );
+  },
+
+  async projects(): Promise<Project[]> {
+    return (await req<{ projects: Project[] }>('/api/board/projects')).projects;
+  },
+  async createProject(input: { key: string; name?: string; rootPath: string }): Promise<Project> {
+    return (await req<{ project: Project }>('/api/board/projects', body(input))).project;
+  },
+  async updateProject(
+    id: string,
+    patch: { name?: string; rootPath?: string },
+  ): Promise<Project> {
+    return (
+      await req<{ project: Project }>(`/api/board/projects/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(patch),
+      })
+    ).project;
+  },
+  async deleteProject(id: string): Promise<void> {
+    await req<{ ok: boolean }>(`/api/board/projects/${id}`, { method: 'DELETE' });
   },
 
   async replaceBoard(board: BoardState, events: JournalEvent[] = []): Promise<BoardState> {
