@@ -15,6 +15,22 @@ export interface BoardColumnDTO {
   kind: ColumnKind;
 }
 
+export interface BoardRunDTO {
+  id: string;
+  status: string;
+  runner: string;
+  model: string | null;
+  branch: string | null;
+  worktree: string | null;
+  prUrl: string | null;
+  prNumber: number | null;
+  startedAt: string;
+  heartbeatAt: string;
+  finishedAt: string | null;
+  elapsedMs: number | null;
+  error: string | null;
+}
+
 export interface BoardTaskDTO {
   id: string;
   columnId: string;
@@ -29,6 +45,7 @@ export interface BoardTaskDTO {
   gitEnabled: boolean;
   branch: string | null;
   lastCommit: string | null;
+  run: BoardRunDTO | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -39,6 +56,52 @@ export interface BoardDTO {
 }
 
 const PRIORITIES = new Set(['low', 'medium', 'high']);
+
+interface RunRow {
+  id: string;
+  status: string;
+  runner: string;
+  model: string | null;
+  branch: string | null;
+  worktree: string | null;
+  prUrl: string | null;
+  prNumber: number | null;
+  startedAt: Date;
+  heartbeatAt: Date;
+  finishedAt: Date | null;
+  elapsedMs: number | null;
+  error: string | null;
+}
+
+export function toRunDTO(run: RunRow): BoardRunDTO {
+  return {
+    id: run.id,
+    status: run.status,
+    runner: run.runner,
+    model: run.model,
+    branch: run.branch,
+    worktree: run.worktree,
+    prUrl: run.prUrl,
+    prNumber: run.prNumber,
+    startedAt: run.startedAt.toISOString(),
+    heartbeatAt: run.heartbeatAt.toISOString(),
+    finishedAt: run.finishedAt ? run.finishedAt.toISOString() : null,
+    elapsedMs: run.elapsedMs,
+    error: run.error,
+  };
+}
+
+/** Keep a list densely ordered after a card leaves it. */
+export async function renumberColumn(userId: string, columnId: string): Promise<void> {
+  const tasks = await prisma.task.findMany({
+    where: { userId, columnId },
+    orderBy: { position: 'asc' },
+    select: { id: true },
+  });
+  await prisma.$transaction(
+    tasks.map((t, i) => prisma.task.update({ where: { id: t.id }, data: { position: i } })),
+  );
+}
 
 export async function getBoardState(userId: string): Promise<BoardDTO> {
   const [columns, tasks] = await Promise.all([
@@ -55,7 +118,6 @@ export async function getBoardState(userId: string): Promise<BoardDTO> {
         runs: {
           orderBy: { startedAt: 'desc' },
           take: 1,
-          select: { status: true },
         },
       },
     }),
@@ -82,6 +144,7 @@ export async function getBoardState(userId: string): Promise<BoardDTO> {
       gitEnabled: t.gitEnabled ?? false,
       branch: t.branch ?? null,
       lastCommit: t.lastCommit ?? null,
+      run: t.runs[0] ? toRunDTO(t.runs[0]) : null,
       createdAt: t.createdAt.toISOString(),
       updatedAt: t.updatedAt.toISOString(),
     })),

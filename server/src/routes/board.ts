@@ -1,8 +1,10 @@
 import { Router } from 'express';
+import { Prisma } from '@prisma/client';
 import { prisma } from '../db';
 import type { AuthedRequest } from '../middleware';
 import {
   cleanProjectKey,
+  cleanRootPath,
   cleanTags,
   parseDueDate,
   toDateString,
@@ -11,7 +13,8 @@ import {
   validCommit,
   validPriority,
 } from '../validate';
-import { getBoardState, seedDefaults } from '../board';
+import { getBoardState, renumberColumn, seedDefaults } from '../board';
+import { claimNextTask, completeRunForTask, finishRun, heartbeatRun, releaseRun } from '../runs';
 import {
   COLUMN_KINDS,
   COLUMN_TITLES,
@@ -59,17 +62,6 @@ function viaMcp(req: unknown): boolean {
  */
 const TX = { timeout: 20_000, maxWait: 5_000 };
 
-async function renumberColumn(userId: string, columnId: string): Promise<void> {
-  const tasks = await prisma.task.findMany({
-    where: { userId, columnId },
-    orderBy: { position: 'asc' },
-    select: { id: true },
-  });
-  await prisma.$transaction(
-    tasks.map((t, i) => prisma.task.update({ where: { id: t.id }, data: { position: i } })),
-  );
-}
-
 /** List titles for the current user, keyed by id — used to phrase move events. */
 async function columnTitles(userId: string): Promise<Map<string, string>> {
   const cols = await prisma.column.findMany({ where: { userId }, select: { id: true, title: true } });
@@ -78,6 +70,217 @@ async function columnTitles(userId: string): Promise<Map<string, string>> {
 
 boardRouter.get('/', async (req, res) => {
   res.json({ board: await getBoardState(uid(req)) });
+});
+
+/**
+ * Project roots the agent may open, editable from the board. The same handlers
+ * answer /api/board and /api/mcp, so the MCP reads what the UI wrote.
+ */
+boardRouter.get('/projects', async (req, res) => {
+  const projects = await prisma.project.findMany({
+    where: { userId: uid(req) },
+    orderBy: { key: 'asc' },
+    select: { id: true, key: true, name: true, rootPath: true },
+  });
+  res.json({ projects });
+});
+
+boardRouter.post('/projects', async (req, res) => {
+  const userId = uid(req);
+  const { key, name, rootPath } = req.body as {
+    key?: unknown;
+    name?: unknown;
+    rootPath?: unknown;
+  };
+  const cleanKey = cleanProjectKey(key);
+  if (!cleanKey) {
+    res.status(400).json({ error: 'key required (a-z0-9-_)' });
+    return;
+  }
+  const cleanPath = cleanRootPath(rootPath);
+  if (!cleanPath) {
+    res.status(400).json({ error: 'rootPath must be an absolute Windows or POSIX path' });
+    return;
+  }
+  if (name !== undefined && typeof name !== 'string') {
+    res.status(400).json({ error: 'bad name' });
+    return;
+  }
+  try {
+    const project = await prisma.project.create({
+      data: {
+        userId,
+        key: cleanKey,
+        name: typeof name === 'string' ? name.trim().slice(0, 80) : '',
+        rootPath: cleanPath,
+      },
+    });
+    res.status(201).json({ project });
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+      res.status(409).json({ error: `project "${cleanKey}" already exists` });
+      return;
+    }
+    throw error;
+  }
+});
+
+boardRouter.patch('/projects/:id', async (req, res) => {
+  const userId = uid(req);
+  const project = await prisma.project.findFirst({ where: { id: req.params.id, userId } });
+  if (!project) {
+    res.status(404).json({ error: 'not found' });
+    return;
+  }
+  const { name, rootPath } = req.body as { name?: unknown; rootPath?: unknown };
+  const data: { name?: string; rootPath?: string } = {};
+  if (name !== undefined) {
+    if (typeof name !== 'string') {
+      res.status(400).json({ error: 'bad name' });
+      return;
+    }
+    data.name = name.trim().slice(0, 80);
+  }
+  if (rootPath !== undefined) {
+    const cleanPath = cleanRootPath(rootPath);
+    if (!cleanPath) {
+      res.status(400).json({ error: 'rootPath must be an absolute Windows or POSIX path' });
+      return;
+    }
+    data.rootPath = cleanPath;
+  }
+  if (Object.keys(data).length === 0) {
+    res.status(400).json({ error: 'nothing to update' });
+    return;
+  }
+  const updated = await prisma.project.update({ where: { id: project.id }, data });
+  res.json({ project: updated });
+});
+
+boardRouter.delete('/projects/:id', async (req, res) => {
+  const deleted = await prisma.project.deleteMany({
+    where: { id: req.params.id, userId: uid(req) },
+  });
+  if (deleted.count === 0) {
+    res.status(404).json({ error: 'not found' });
+    return;
+  }
+  res.json({ ok: true });
+});
+
+/**
+ * Claim the next card in Todo. The ranking and the one-active-run guard live in
+ * runs.ts; this route is the shared door for the MCP and the web app.
+ */
+boardRouter.post('/pick', async (req, res) => {
+  const { runner, model, projects } = req.body as {
+    runner?: unknown;
+    model?: unknown;
+    projects?: unknown;
+  };
+  const cleanRunner =
+    typeof runner === 'string' && runner.trim() ? runner.trim().slice(0, 40) : 'agent';
+  if (model !== undefined && model !== null && typeof model !== 'string') {
+    res.status(400).json({ error: 'bad model' });
+    return;
+  }
+  let cleanProjects: string[] | undefined;
+  if (projects !== undefined) {
+    if (!Array.isArray(projects)) {
+      res.status(400).json({ error: 'projects must be an array of keys' });
+      return;
+    }
+    const keys = projects.map((p) => cleanProjectKey(p));
+    if (keys.some((k) => !k)) {
+      res.status(400).json({ error: 'bad project key in projects' });
+      return;
+    }
+    cleanProjects = keys as string[];
+  }
+  const result = await claimNextTask(uid(req), {
+    runner: cleanRunner,
+    model: typeof model === 'string' ? model.trim().slice(0, 120) : null,
+    projects: cleanProjects,
+  });
+  if (!result) {
+    res.json({ task: null });
+    return;
+  }
+  res.json({
+    task: result.board.tasks.find((t) => t.id === result.taskId) ?? null,
+    branch: result.branch,
+    run: result.run,
+  });
+});
+
+boardRouter.post('/tasks/:id/heartbeat', async (req, res) => {
+  const result = await heartbeatRun(uid(req), req.params.id);
+  res.json({ ok: true, heartbeatAt: result.heartbeatAt });
+});
+
+boardRouter.post('/tasks/:id/finish', async (req, res) => {
+  const { branch, lastCommit, prUrl, prNumber, summary } = req.body as {
+    branch?: unknown;
+    lastCommit?: unknown;
+    prUrl?: unknown;
+    prNumber?: unknown;
+    summary?: unknown;
+  };
+  const input: {
+    id: string;
+    branch?: string | null;
+    lastCommit?: string | null;
+    prUrl?: string | null;
+    prNumber?: number | null;
+    summary?: string | null;
+  } = { id: req.params.id };
+  if (branch !== undefined && branch !== null) {
+    if (typeof branch !== 'string') {
+      res.status(400).json({ error: 'bad branch' });
+      return;
+    }
+    input.branch = branch;
+  }
+  if (lastCommit !== undefined && lastCommit !== null) {
+    if (typeof lastCommit !== 'string') {
+      res.status(400).json({ error: 'bad lastCommit' });
+      return;
+    }
+    input.lastCommit = lastCommit;
+  }
+  if (prUrl !== undefined && prUrl !== null) {
+    if (typeof prUrl !== 'string') {
+      res.status(400).json({ error: 'bad prUrl' });
+      return;
+    }
+    input.prUrl = prUrl;
+  }
+  if (prNumber !== undefined && prNumber !== null) {
+    if (typeof prNumber !== 'number') {
+      res.status(400).json({ error: 'bad prNumber' });
+      return;
+    }
+    input.prNumber = prNumber;
+  }
+  if (summary !== undefined && summary !== null) {
+    if (typeof summary !== 'string') {
+      res.status(400).json({ error: 'bad summary' });
+      return;
+    }
+    input.summary = summary;
+  }
+  const board = await finishRun(uid(req), input);
+  res.json({ board });
+});
+
+boardRouter.post('/tasks/:id/release', async (req, res) => {
+  const { reason } = req.body as { reason?: unknown };
+  if (reason !== undefined && reason !== null && typeof reason !== 'string') {
+    res.status(400).json({ error: 'bad reason' });
+    return;
+  }
+  const board = await releaseRun(uid(req), req.params.id, reason ?? null);
+  res.json({ board });
 });
 
 /** Live sync: one SSE stream per tab. Client refetches board + journal on push. */
@@ -598,6 +801,7 @@ boardRouter.patch('/tasks/:id', async (req, res) => {
   // model-facing vocabulary is column names). Resolve the title here so both
   // clients share one move path, one journal entry and one bump.
   let targetColumnId: unknown = columnId;
+  let targetKind: ColumnKind | null = null;
   if (targetColumnId === undefined && column !== undefined) {
     if (typeof column !== 'string' || !column.trim()) {
       res.status(400).json({ error: 'bad column' });
@@ -634,6 +838,7 @@ boardRouter.patch('/tasks/:id', async (req, res) => {
       res.status(403).json({ error: DONE_REFUSAL });
       return;
     }
+    targetKind = isColumnKind(col.kind) ? col.kind : 'active';
     if (targetColumnId !== task.columnId) {
       const count = await prisma.task.count({ where: { userId, columnId: targetColumnId } });
       data.columnId = targetColumnId;
@@ -641,6 +846,7 @@ boardRouter.patch('/tasks/:id', async (req, res) => {
     }
   }
   await prisma.task.update({ where: { id: task.id }, data });
+  if (targetKind === 'done') await completeRunForTask(userId, task.id);
 
   // Journal: one entry describing exactly which fields actually changed.
   const changed: string[] = [];
@@ -738,6 +944,7 @@ boardRouter.post('/tasks/:id/move', async (req, res) => {
       prisma.task.update({ where: { id: t.id }, data: { columnId, position: i } }),
     ),
   );
+  if (col.kind === 'done') await completeRunForTask(userId, task.id);
   if (fromColumn !== columnId) {
     await renumberColumn(userId, fromColumn);
     const titles = await columnTitles(userId);

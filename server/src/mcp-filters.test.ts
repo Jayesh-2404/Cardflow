@@ -8,7 +8,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { DEFAULT_TZ, selectOpenTasks, todayInTz } from './mcp-filters';
+import { DEFAULT_TZ, branchFor, rankOpenTasks, runDuration, selectOpenTasks, todayInTz } from './mcp-filters';
 import type { BoardColumnDTO, BoardTaskDTO } from './board';
 
 // --- fixtures -----------------------------------------------------------------
@@ -37,6 +37,7 @@ function task(over: Partial<BoardTaskDTO> = {}): BoardTaskDTO {
     gitEnabled: false,
     branch: null,
     lastCommit: null,
+    run: null,
     createdAt: '2026-10-01T00:00:00.000Z',
     updatedAt: '2026-10-01T00:00:00.000Z',
     ...over,
@@ -159,6 +160,49 @@ test('selectOpenTasks does not mutate the caller\'s task array', () => {
   assert.deepEqual(rows.map((r) => r.id), ['low', 'high']);
 });
 
+// --- the picker behind pick_task ------------------------------------------------
+
+test('rankOpenTasks orders high priority, then due date, then input order', () => {
+  const rows = [
+    task({ id: 'low-old', priority: 'low', dueDate: '2026-10-01' }),
+    task({ id: 'high-undated', priority: 'high', dueDate: null }),
+    task({ id: 'high-due', priority: 'high', dueDate: '2026-10-09' }),
+    task({ id: 'medium', priority: 'medium', dueDate: '2026-10-02' }),
+    task({ id: 'high-late', priority: 'high', dueDate: '2026-10-20' }),
+    task({ id: 'high-due-2', priority: 'high', dueDate: '2026-10-09' }),
+  ];
+  assert.deepEqual(ids(rankOpenTasks(rows, columns)), [
+    'high-due',
+    'high-due-2',
+    'high-late',
+    'high-undated',
+    'medium',
+    'low-old',
+  ]);
+});
+
+test('rankOpenTasks only returns idle cards in Todo', () => {
+  const rows = [
+    task({ id: 'todo' }),
+    task({ id: 'doing', columnId: 'c-doing' }),
+    task({ id: 'review', columnId: 'c-review' }),
+    task({ id: 'done', columnId: 'c-done' }),
+    task({ id: 'archived', archived: true }),
+    task({ id: 'running', agentState: 'running' }),
+    task({ id: 'held', agentState: 'under-review' }),
+  ];
+  assert.deepEqual(ids(rankOpenTasks(rows, columns)), ['todo']);
+});
+
+test('rankOpenTasks does not mutate the caller\'s task array', () => {
+  const rows = [
+    task({ id: 'low', priority: 'low' }),
+    task({ id: 'high', priority: 'high' }),
+  ];
+  rankOpenTasks(rows, columns);
+  assert.deepEqual(rows.map((r) => r.id), ['low', 'high']);
+});
+
 // --- issue #3: an agent may not mark a card Done -------------------------------
 
 // The refusal lives in the API route, not the MCP process: the route knows the
@@ -175,6 +219,21 @@ test('the API refuses an MCP move into a done-kind list, whatever its title', ()
 test('the MCP no longer re-implements the Done rule by title', () => {
   assert.doesNotMatch(mcpSource, /isDoneTitle/);
   assert.match(mcpSource, /Never move a card into a Done list/);
+});
+
+// --- run names -----------------------------------------------------------------
+
+test('branchFor keeps the branch valid and under the length cap', () => {
+  const branch = branchFor({ id: 'task-abcdef', title: 'Make the PR for Zex: fix bugs!' });
+  assert.match(branch, /^kanban\/[a-z0-9-]+$/);
+  assert.ok(branch.length <= 128, branch);
+  assert.match(branch, /abcdef/);
+});
+
+test('runDuration stays readable at seconds, minutes and hours', () => {
+  assert.equal(runDuration(5_000), '5s');
+  assert.equal(runDuration(12 * 60_000), '12m');
+  assert.equal(runDuration(65 * 60_000), '1h 05m');
 });
 
 // --- wiring -------------------------------------------------------------------
