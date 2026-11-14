@@ -5,6 +5,10 @@
  Canonical runbook (new deploys): docs/DEPLOY.md
 ================================================================================
 
+ !! STALE: the code moved to Jayesh-2404/Cardflow. A service still building Notes
+    runs pre-split code and 500s on login against the migrated DB. Reconnect the
+    service to Cardflow and redeploy before following the rest of this file.
+
 
 --------------------------------------------------------------------------------
  1. DASHBOARD SETTINGS   (Dashboard -> service -> Settings -> Build & Deploy)

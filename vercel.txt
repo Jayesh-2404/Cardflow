@@ -5,6 +5,9 @@
  Canonical runbook (new deploys): docs/DEPLOY.md
 ================================================================================
 
+ !! STALE: the code moved to Jayesh-2404/Cardflow. A project still building Notes
+    serves the pre-split UI. Reconnect it to Cardflow and redeploy; see docs/DEPLOY.md.
+
 
 --------------------------------------------------------------------------------
  1. DASHBOARD SETTINGS   (Project -> Settings -> General / Build & Deploy)

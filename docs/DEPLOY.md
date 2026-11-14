@@ -208,11 +208,13 @@ Then, in the browser, the checklist:
 - **API**: Render → Events / deploys → **Rollback** to the previous deploy. Env var
   values are *not* rolled back — re-check the dashboard if the incident was a config
   change. Same idea on any other host: redeploy the previous commit.
-- **Database**: migrations in this repo are additive, so an older API commit runs fine
-  against the current schema. `prisma migrate deploy` cannot undo a migration; if data
-  itself must go back, create a Neon branch from a point in time (project → Branches →
-  Restore), verify against it, and only then repoint `DATABASE_URL`. Test on the branch,
-  not on the primary.
+- **Database**: migrations are not all additive. A migration may drop a column the old
+  API still reads (`20261110130000_four_lists_and_runs` drops `Task.agentState`), so an
+  old API can boot, set cookies, then 500 on login. Deploy the API and `db:deploy`
+  together, and never leave the API on a commit older than the schema. `prisma migrate
+  deploy` cannot undo a migration; if data itself must go back, create a Neon branch
+  from a point in time (project → Branches → Restore), verify against it, and only then
+  repoint `DATABASE_URL`. Test on the branch, not on the primary.
 - **Emergency session reset**: rotating `JWT_SECRET` invalidates every session at once
   (everyone re-logs in). Rotating the Neon password invalidates the URLs — update the
   host env and restart.
@@ -228,6 +230,7 @@ Then, in the browser, the checklist:
 | `prisma migrate deploy` hangs or fails on Neon | `DIRECT_URL` points at the pooler | Use the direct (non-pooler) connection string |
 | Server exits at boot with "Server configuration is invalid" | one of the checks above (JWT strength, `FRONTEND_ORIGIN`, `NODE_ENV`, port) | The message lists exactly what to set; reproduce locally with `npm run preflight` and the same values |
 | Signed in, then bounced to login on the deployed site | API host missing `NODE_ENV=production` (cookies stay `Lax`) | Set it, restart the API |
+| Login returns 500 "internal error" after the correct password (the response still sets `kb_at`/`kb_rt`) | the API deploy is older than the database schema - the four-lists migration dropped `Task.agentState`, which the old `getBoardState` still selects | redeploy the API from the current `Jayesh-2404/Cardflow` repo; confirm the host builds `server/`, not the old Notes repo, then retry login |
 | First request after ~15 min idle takes 30–50 s | free-tier instance/DB asleep | Not a bug; retry, or move to a paid instance (render.txt §5) |
 | Login returns 429 | auth rate limit (60 tries / 10 min / IP) | Wait 10 minutes |
 | Live updates stop after the stream drops (network blip, laptop sleep) | web bundle built before the reconnect fix; the reconnects ride an expired access cookie | Deploy the current web build — the stream now refreshes the session and reconnects itself |
